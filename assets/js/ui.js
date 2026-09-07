@@ -87,8 +87,94 @@ export const pageHead = ({ crumbs, title, sub, actions }) => `
     ${actions ? `<div class="page-head__actions">${actions}</div>` : ''}
   </div>`;
 
-export const deflist = rows => `<div class="deflist">${rows.map(([k, v]) =>
-  `<div class="dk">${esc(k)}</div><div class="dv">${v ?? '—'}</div>`).join('')}</div>`;
+export const deflist = rows => `<dl class="deflist">${rows.map(([k, v]) =>
+  `<dt class="dk">${esc(k)}</dt><dd class="dv">${v ?? '—'}</dd>`).join('')}</dl>`;
+
+/* --- form fields ----------------------------------------------------------
+   Every control gets a minted id and a <label for>, so it has a
+   programmatically determinable accessible name (WCAG 1.3.1 / 4.1.2).
+   Usage: field('Email', id => `<input id="${id}" type="email">`)
+   -------------------------------------------------------------------------- */
+let fieldSeq = 0;
+export function field(label, control, opts = {}) {
+  const id = 'fld' + (++fieldSeq);
+  const hintId = opts.hint ? id + 'h' : null;
+  const cls = 'field' + (opts.span ? ' span-' + opts.span : '') + (opts.className ? ' ' + opts.className : '');
+  return `<div class="${cls}">
+    <label for="${id}">${esc(label)}</label>
+    ${control(id, hintId)}
+    ${opts.hint ? `<div class="field__hint" id="${hintId}">${opts.hint}</div>` : ''}
+  </div>`;
+}
+/** Shorthands for the common controls. */
+export const textField = (label, o = {}) => field(label, (id, h) =>
+  `<input id="${id}" type="${o.type || 'text'}"${o.value != null ? ` value="${esc(o.value)}"` : ''}${
+    o.placeholder ? ` placeholder="${esc(o.placeholder)}"` : ''}${o.list ? ` list="${esc(o.list)}"` : ''}${
+    h ? ` aria-describedby="${h}"` : ''}${o.required ? ' required' : ''}>`, o);
+export const selectField = (label, options, o = {}) => field(label, (id, h) =>
+  `<select id="${id}"${h ? ` aria-describedby="${h}"` : ''}>${options.map(x => {
+    const v = typeof x === 'string' ? x : x.value;
+    const sel = o.value != null && v === o.value ? ' selected' : '';
+    return `<option${sel}>${esc(v)}</option>`;
+  }).join('')}</select>`, o);
+export const textareaField = (label, o = {}) => field(label, (id, h) =>
+  `<textarea id="${id}"${o.placeholder ? ` placeholder="${esc(o.placeholder)}"` : ''}${
+    h ? ` aria-describedby="${h}"` : ''}${o.style ? ` style="${o.style}"` : ''}></textarea>`, o);
+export const checkField = (label, o = {}) =>
+  `<label class="check"><input type="checkbox"${o.checked ? ' checked' : ''}> <span>${esc(label)}</span></label>`;
+
+/* --- tabs -----------------------------------------------------------------
+   One implementation instead of the nine copies this pattern had. Renders a
+   real ARIA tablist and returns a mount() that wires selection.
+   -------------------------------------------------------------------------- */
+let tabSeq = 0;
+export function tabs(names, onSelect, initial) {
+  const id = 'tabs' + (++tabSeq);
+  const active = initial && names.includes(initial) ? initial : names[0];
+  const html = `<div class="tabs" role="tablist" id="${id}">${names.map(n => {
+    const sel = n === active;
+    return `<button type="button" role="tab" data-tab="${esc(n)}" id="${id}-${slug(n)}"
+      aria-selected="${sel}" tabindex="${sel ? 0 : -1}"${sel ? ' class="is-active"' : ''}>${esc(n)}</button>`;
+  }).join('')}</div>`;
+  const mount = root => {
+    const strip = root.querySelector('#' + id);
+    if (!strip) return;
+    const btns = [...strip.querySelectorAll('[data-tab]')];
+    const select = b => {
+      btns.forEach(x => {
+        const on = x === b;
+        x.classList.toggle('is-active', on);
+        x.setAttribute('aria-selected', String(on));
+        x.tabIndex = on ? 0 : -1;
+      });
+      onSelect(b.dataset.tab);
+    };
+    strip.addEventListener('click', e => {
+      const b = e.target.closest('[data-tab]');
+      if (b) select(b);
+    });
+    strip.addEventListener('keydown', e => {
+      const i = btns.indexOf(document.activeElement);
+      if (i < 0) return;
+      let n = null;
+      if (e.key === 'ArrowRight') n = btns[(i + 1) % btns.length];
+      else if (e.key === 'ArrowLeft') n = btns[(i - 1 + btns.length) % btns.length];
+      else if (e.key === 'Home') n = btns[0];
+      else if (e.key === 'End') n = btns[btns.length - 1];
+      if (n) { e.preventDefault(); n.focus(); select(n); }
+    });
+  };
+  return { html, mount, active };
+}
+const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+/* --- hero band ------------------------------------------------------------- */
+export const hero = ({ title, sub, actions, art }) => `
+  <section class="hero"${art ? ` style="--hero-art:${art}"` : ''}>
+    <h1>${esc(title)}</h1>
+    ${sub ? `<p>${esc(sub)}</p>` : ''}
+    ${actions ? `<div class="hero__actions">${actions}</div>` : ''}
+  </section>`;
 
 export const emptyState = (msg, sub) =>
   `<div class="dt__empty"><div style="font-size:15px;color:var(--text)">${esc(msg)}</div>${sub ? `<div style="margin-top:4px">${esc(sub)}</div>` : ''}</div>`;
@@ -105,12 +191,19 @@ export const barChart = (series, fmt = usd0) => {
 /* --- toasts ---------------------------------------------------------------- */
 export function toast(message) {
   let host = document.querySelector('.toasts');
-  if (!host) { host = document.createElement('div'); host.className = 'toasts'; document.body.appendChild(host); }
+  if (!host) {
+    host = document.createElement('div');
+    host.className = 'toasts';
+    host.setAttribute('role', 'status');
+    host.setAttribute('aria-live', 'polite');
+    host.setAttribute('aria-atomic', 'false');
+    document.body.appendChild(host);
+  }
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = message;
   host.appendChild(el);
-  setTimeout(() => el.remove(), 3200);
+  setTimeout(() => el.remove(), 4000);
 }
 
 /* --- modal ----------------------------------------------------------------- */
@@ -127,7 +220,28 @@ export function modal({ title, body, confirm = 'Confirm', cancel = 'Cancel', wid
         <button class="btn" data-confirm>${esc(confirm)}</button>
       </footer>
     </div>`;
-  const close = () => scrim.remove();
+  const opener = document.activeElement;
+  const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+  const close = () => {
+    if (!scrim.isConnected) return;
+    scrim.remove();
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('hashchange', close);
+    document.body.style.overflow = prevOverflow;
+    if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+  };
+
+  function onKey(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); return close(); }
+    if (e.key !== 'Tab') return;
+    const nodes = [...scrim.querySelectorAll(FOCUSABLE)].filter(n => n.offsetParent !== null);
+    if (!nodes.length) return;
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+
   scrim.addEventListener('click', e => {
     if (e.target === scrim || e.target.closest('[data-close]')) close();
     if (e.target.closest('[data-confirm]')) {
@@ -135,10 +249,16 @@ export function modal({ title, body, confirm = 'Confirm', cancel = 'Cancel', wid
       if (ok !== false) close();
     }
   });
-  document.addEventListener('keydown', function onEsc(e) {
-    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); }
-  });
+
+  const prevOverflow = document.body.style.overflow;
+  document.addEventListener('keydown', onKey, true);
+  // a modal must never outlive the view that opened it
+  window.addEventListener('hashchange', close);
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(scrim);
+  const target = scrim.querySelector(FOCUSABLE);
+  if (target) target.focus();
+  scrim.close = close;
   return scrim;
 }
 
@@ -249,16 +369,25 @@ export class DataTable {
       <div class="dt__scroll">
         <table class="dt__table">
           <thead>
-            <tr>${cols.map(c => `<th class="${c.className || ''}${c.sortable === false ? '' : ' sortable'}${
-              this.sortKey === c.key ? (this.sortDir === 'asc' ? ' sorted-asc' : ' sorted-desc') : ''
-            }" data-sort="${c.sortable === false ? '' : esc(c.key)}">${esc(c.label)}</th>`).join('')}</tr>
-            ${this.o.columnFilters ? `<tr>${cols.map(c => `<th class="${c.className || ''}" style="border-bottom:1px solid var(--line);padding:6px 10px">${
+            <tr>${cols.map(c => {
+              const on = this.sortKey === c.key;
+              const canSort = c.sortable !== false;
+              const ariaSort = on ? (this.sortDir === 'asc' ? 'ascending' : 'descending') : (canSort ? 'none' : null);
+              return `<th scope="col" class="${c.className || ''}${canSort ? ' sortable' : ''}${
+                on ? (this.sortDir === 'asc' ? ' sorted-asc' : ' sorted-desc') : ''
+              }"${ariaSort ? ` aria-sort="${ariaSort}"` : ''} data-sort="${canSort ? esc(c.key) : ''}">${
+                canSort
+                  ? `<button type="button" class="dt__sort">${esc(c.label)}</button>`
+                  : esc(c.label)
+              }</th>`;
+            }).join('')}</tr>
+            ${this.o.columnFilters ? `<tr class="dt__filters">${cols.map(c => `<td class="${c.className || ''}" style="border-bottom:1px solid var(--line);padding:6px 10px">${
               c.filter === false ? '' :
-              `<input type="search" data-colq="${esc(c.key)}" value="${esc(this.colQ[c.key] || '')}" aria-label="Filter ${esc(c.label)}" style="width:100%;min-width:80px;padding:5px 8px;border:1px solid var(--line-strong);border-radius:3px;font-size:12px">`
-            }</th>`).join('')}</tr>` : ''}
+              `<input type="search" data-colq="${esc(c.key)}" value="${esc(this.colQ[c.key] || '')}" aria-label="Filter by ${esc(c.label)}" style="width:100%;min-width:80px;padding:5px 8px;border:1px solid var(--line-strong);border-radius:3px;font-size:12px">`
+            }</td>`).join('')}</tr>` : ''}
           </thead>
           <tbody>
-            ${rows.length ? rows.map(r => `<tr${this.o.onRowClick ? ' style="cursor:pointer"' : ''} data-row="${esc(r.id ?? '')}">${
+            ${rows.length ? rows.map(r => `<tr${this.o.onRowClick ? ' style="cursor:pointer" tabindex="0"' : ''} data-row="${esc(r.id ?? '')}">${
               cols.map(c => `<td class="${c.className || ''}">${this.cellHtml(c, r)}</td>`).join('')
             }</tr>`).join('') : `<tr><td colspan="${cols.length}">${emptyState('No matching records found', 'Adjust your filters and try again.')}</td></tr>`}
           </tbody>
@@ -309,6 +438,16 @@ export class DataTable {
       }
     });
 
+    root.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const tr = e.target.closest('tbody tr[data-row]');
+      if (tr && this.o.onRowClick && e.target === tr) {
+        e.preventDefault();
+        const row = this.o.rows.find(r => String(r.id) === tr.dataset.row);
+        if (row) this.o.onRowClick(row, e);
+      }
+    });
+
     root.addEventListener('input', e => {
       const t = e.target;
       if (t.dataset.act === 'q') { this.q = t.value; this.page = 1; this.repaintKeepFocus('[data-act="q"]'); }
@@ -340,8 +479,11 @@ export class DataTable {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = (this.o.title || 'export').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.csv';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    a.remove();
+    // give the download a tick to start before the blob is released
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
     toast('CSV exported');
   }
   print() {
@@ -363,6 +505,8 @@ export class DataTable {
   }
 }
 function csvCell(v) {
-  const s = String(v ?? '');
+  let s = String(v ?? '');
+  // A leading =, +, -, @ or control char makes Excel/Sheets evaluate the cell.
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }

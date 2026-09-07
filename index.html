@@ -6,6 +6,13 @@
   <title>Overland Missions — Admin Portal</title>
   <meta name="description" content="Back-office portal for Overland Missions: people, expeditions, giving, request approvals and system administration.">
   <meta name="theme-color" content="#0f0e0d">
+  <meta name="robots" content="noindex, nofollow">
+  <!-- Defence in depth. The authoritative policy is served as a real header
+       (see _headers), which also carries frame-ancestors and base-uri — those
+       two are header-only and are ignored in a meta tag. 'unsafe-inline' for
+       style-src is required by the inline style attributes the views emit;
+       script-src has no 'unsafe-inline'. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="assets/img/overland-mark-black.svg">
   <link rel="stylesheet" href="assets/css/overland.css?v=1">
 </head>

@@ -3,7 +3,18 @@
    Tokens lifted from the live overlandmissions.com brand stylesheet.
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=Teko:wght@400;500;600&family=Work+Sans:wght@300;400;500;600;700&display=swap');
+/* Self-hosted brand webfonts — no runtime third-party dependency.
+   Downloaded from Google Fonts (OFL). Latin subset only. */
+@font-face{font-family:'IBM Plex Sans Condensed';src:url('../fonts/IBMPlexSansCondensed-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'IBM Plex Sans Condensed';src:url('../fonts/IBMPlexSansCondensed-600.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'Teko';src:url('../fonts/Teko-500.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Teko';src:url('../fonts/Teko-600.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'Teko';src:url('../fonts/Teko-700.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Work Sans';src:url('../fonts/WorkSans-300.woff2') format('woff2');font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:'Work Sans';src:url('../fonts/WorkSans-400.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Work Sans';src:url('../fonts/WorkSans-500.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Work Sans';src:url('../fonts/WorkSans-600.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'Work Sans';src:url('../fonts/WorkSans-700.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
 
 :root {
   /* --- core ------------------------------------------------------------ */
@@ -27,15 +38,20 @@
   --vine: #354c21;
 
   /* --- neutrals --------------------------------------------------------- */
-  --input-grey: #9b9b9b;
-  --page: #f5f5f5;
+  --input-grey: #767471;          /* darkened from #9b9b9b for 4.5:1 on white */
+  --page: #ddd7ce;                /* Bone — the portal's page surface */
+  --subnav: #d6d0c7;              /* Bone, one step down (Figma sub-nav column) */
   --surface: #ffffff;
-  --surface-2: #fafafa;
-  --line: #e4e2de;
-  --line-strong: #cfcbc4;
-  --row-stripe: #ececec;
+  --surface-2: #f7f5f2;
+  --line: #cdc7bd;
+  --line-strong: #b8b1a5;
+  --row-stripe: #f0ede8;
   --text: #1c1b19;
-  --text-muted: #6d6a65;
+  --text-muted: #5c5952;          /* 7.0:1 on Bone */
+  /* Text colour on a Flare fill. Brand pairing is Bone (2.74:1, below WCAG AA).
+     Swap to var(--shadow) for 4.93:1 while keeping the Flare fill unchanged.
+     See docs/DECISIONS.md — this is a brand-vs-accessibility call. */
+  --on-flare: var(--bone);
 
   /* --- type ------------------------------------------------------------- */
   --font-body: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -77,24 +93,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
    Typography
    ========================================================================== */
 .h-display {
-  font-family: var(--font-cond);
+  font-family: var(--font-display);   /* heading role = Teko */
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .01em;
+  letter-spacing: -.01em;             /* spec: .heading-style-h1 */
   line-height: 1;
   margin: 0;
 }
 /* the light, wide-tracked centred card title used across the live portal */
+/* Section heading — spec: Work Sans semibold, sentence case (Figma portal) */
 .card-title {
   font-family: var(--font-body);
-  font-weight: 300;
-  font-size: 26px;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  text-align: center;
-  margin: 0 0 22px;
+  font-weight: 600;
+  font-size: 25px;
+  letter-spacing: -.5px;
+  line-height: 1.3;
+  margin: 0 0 6px;
   color: var(--text);
 }
+.card-title + .card-sub { margin: 0 0 20px; color: var(--text-muted); }
 .section-title {
   font-family: var(--font-body);
   font-weight: 500;
@@ -105,10 +122,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: 10px;
 }
 .eyebrow {
-  font-family: var(--font-cond);
-  font-size: 11px;
+  font-family: var(--font-cond);      /* eyebrow role = IBM Plex Sans Condensed */
+  font-size: 13px;                    /* spec: .text-style-tagline .8125rem */
   font-weight: 600;
-  letter-spacing: .14em;
+  letter-spacing: 1.12px;             /* the brand's signature tracking */
+  line-height: 1.125rem;
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -132,17 +150,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-transform: uppercase;
   border: 1px solid var(--flare);
   background: var(--flare);
-  color: var(--bone);
+  color: var(--on-flare);
   border-radius: 0;
   cursor: pointer;
   transition: background .15s ease, color .15s ease, border-color .15s ease;
   text-decoration: none;
 }
 .btn:hover { background: var(--shadow); border-color: var(--shadow); color: var(--bone); text-decoration: none; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
 .btn:focus-visible { outline: 2px solid var(--rain); outline-offset: 2px; }
 
-.btn--ghost { background: transparent; color: var(--flare); }
-.btn--ghost:hover { background: var(--flare); color: var(--bone); }
+/* Figma nav secondary ("LOG IN"): Flare border, BONE text, transparent fill */
+.btn--ghost { background: transparent; color: var(--bone); }
+.btn--ghost:hover { background: var(--flare); color: var(--on-flare); }
+/* on a light surface the bone text would vanish, so invert there */
+.btn--ghost.on-light { color: var(--shadow); }
 
 .btn--dark { background: var(--shadow); border-color: var(--shadow); color: var(--bone); }
 .btn--dark:hover { background: var(--flare); border-color: var(--flare); }
@@ -152,11 +174,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 13px;
-  font-size: 13px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
+  padding: 8px 13px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.12px;
+  text-transform: uppercase;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--line-strong);
@@ -170,6 +192,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-mini--go { color: var(--emerald-pine); border-color: #a9c9bf; }
 .btn-mini--go:hover { background: #eef6f3; border-color: var(--emerald-pine); }
 .btn-mini[disabled] { opacity: .45; cursor: not-allowed; }
+.btn-mini:focus-visible, .dt-btn:focus-visible, .pager button:focus-visible,
+.icon-btn:focus-visible, .tabs button:focus-visible { outline: 2px solid var(--rain); outline-offset: 2px; }
 
 /* the grey DataTables toolbar buttons (CSV / Print / Column visibility) */
 .dt-btn {
@@ -212,9 +236,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand__logo { width: 172px; height: auto; flex: 0 0 auto; }
 .brand__tag {
   font-family: var(--font-cond);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: .18em;
+  letter-spacing: 1.12px;
   text-transform: uppercase;
   color: var(--flare);
   border-left: 1px solid var(--line-strong);
@@ -325,40 +349,89 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rail__group { padding: 0 14px; margin-bottom: 20px; }
 .rail__heading {
   font-family: var(--font-cond);
-  font-size: 10px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase;
-  color: rgba(221, 215, 206, .45);
+  font-size: 11px; font-weight: 600; letter-spacing: 1.12px; text-transform: uppercase;
+  color: rgba(221, 215, 206, .78);   /* 8.2:1 on Shadow */
   padding: 0 10px 8px;
 }
 .rail__link {
   display: flex; align-items: center; gap: 10px;
-  padding: 9px 10px;
-  border-radius: var(--radius);
-  color: rgba(221, 215, 206, .82);
-  font-size: 13.5px;
-  border-left: 2px solid transparent;
+  padding: 10px 12px;
+  color: var(--bone);
+  font-family: var(--font-cond);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.12px;
+  text-transform: uppercase;
   text-decoration: none;
 }
-.rail__link:hover { background: rgba(255,255,255,.06); color: #fff; text-decoration: none; }
-.rail__link svg { width: 17px; height: 17px; flex: 0 0 auto; opacity: .8; }
+.rail__link:hover { background: rgba(255,255,255,.09); color: #fff; text-decoration: none; }
+.rail__link svg { width: 17px; height: 17px; flex: 0 0 auto; }
+/* Figma portal: the active item is a solid Flare block, not a tint */
 .rail__link.is-active {
-  background: rgba(236, 67, 0, .13);
-  border-left-color: var(--flare);
-  color: #fff;
-  font-weight: 500;
+  background: var(--flare);
+  color: var(--on-flare);
 }
-.rail__link.is-active svg { color: var(--flare); opacity: 1; }
+.rail__link.is-active svg { color: var(--on-flare); }
+.rail__link:focus-visible { outline: 2px solid var(--bone); outline-offset: -2px; }
 .rail__count {
   margin-left: auto;
-  background: rgba(255,255,255,.12);
+  background: rgba(255,255,255,.16);
+  color: var(--bone);
   border-radius: 9px;
   padding: 1px 7px;
   font-size: 11px;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
-.rail__link.is-active .rail__count { background: var(--flare); color: #fff; }
+.rail__link.is-active .rail__count { background: var(--shadow); color: var(--bone); }
 
 .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .view { padding: 26px 30px 56px; flex: 1 1 auto; }
+
+/* ==========================================================================
+   Hero band — Figma portal: full-bleed band, dark overlay, centred Teko title
+   ========================================================================== */
+.hero {
+  position: relative;
+  margin: -26px -30px 24px;
+  padding: 56px 30px;
+  background: var(--shadow);
+  color: var(--bone);
+  text-align: center;
+  overflow: hidden;
+}
+.hero::before {
+  content: ""; position: absolute; inset: 0;
+  background: var(--hero-art, linear-gradient(135deg, var(--slate), var(--shadow) 60%, var(--bark)));
+  opacity: .55;
+}
+.hero > * { position: relative; }
+.hero h1 {
+  font-family: var(--font-display);
+  font-weight: 700; text-transform: uppercase; letter-spacing: -.01em;
+  font-size: clamp(38px, 5.4vw, 68px); line-height: 1; margin: 0;
+  color: var(--bone);
+}
+.hero p {
+  margin: 10px auto 0; max-width: 62ch;
+  font-family: var(--font-cond);
+  text-transform: uppercase; letter-spacing: 1.12px; font-size: 13px; font-weight: 600;
+  color: rgba(221,215,206,.9);
+}
+.hero__actions { margin-top: 20px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* Second-level sub-nav column (Figma account-settings pattern) */
+.subnav { background: var(--subnav); padding: 0; align-self: start; }
+.subnav a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 12px 14px;
+  font-family: var(--font-cond);
+  font-size: 11px; font-weight: 600; letter-spacing: 1.12px; text-transform: uppercase;
+  color: var(--shadow); text-decoration: none;
+}
+.subnav a:hover { background: rgba(15,14,13,.06); text-decoration: none; }
+.subnav a.is-active { background: var(--flare); color: var(--on-flare); }
+.subnav a svg { width: 15px; height: 15px; }
 
 /* ==========================================================================
    Page header
@@ -369,9 +442,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .page-head__text { min-width: 0; }
 .page-head h1 {
-  font-family: var(--font-cond);
-  font-weight: 700; text-transform: uppercase; letter-spacing: .005em;
-  font-size: 34px; line-height: 1.05; margin: 4px 0 0;
+  font-family: var(--font-display);   /* heading role = Teko */
+  font-weight: 700; text-transform: uppercase; letter-spacing: -.01em;
+  font-size: 44px; line-height: 1; margin: 2px 0 0;
 }
 .page-head p { margin: 6px 0 0; color: var(--text-muted); max-width: 68ch; }
 .page-head__actions { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -431,7 +504,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .stat__label {
   font-family: var(--font-cond);
-  font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.12px; text-transform: uppercase;
   color: var(--text-muted);
 }
 .stat__value {
@@ -471,6 +544,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
    DataTable — matches the portal's DataTables look
    ========================================================================== */
 .dt { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card); }
+/* Figma portal: column headers and cell values are uppercase and tracked */
+table.dt__table th { font-family: var(--font-cond); font-size: 11px; letter-spacing: 1.12px; text-transform: uppercase; }
 .dt__head {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 14px 16px;
@@ -484,8 +559,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 7px 10px;
   background: var(--surface);
 }
-.dt__len select:focus, .dt__search input:focus, .field input:focus, .field select:focus, .field textarea:focus {
-  outline: none; border-color: var(--shadow);
+.dt__len select:focus-visible, .dt__search input:focus-visible, .field input:focus-visible,
+.field select:focus-visible, .field textarea:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--rain); outline-offset: 1px; border-color: var(--shadow);
 }
 .dt__search { flex: 1 1 240px; max-width: 340px; }
 .dt__search input { width: 100%; }
@@ -502,7 +578,14 @@ table.dt__table th {
   position: relative;
   user-select: none;
 }
-table.dt__table th.sortable { cursor: pointer; }
+table.dt__table th.sortable { cursor: pointer; padding: 0; }
+table.dt__table th.sortable > .dt__sort {
+  all: unset; display: block; width: 100%; box-sizing: border-box;
+  padding: 11px 14px; cursor: pointer;
+  font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+}
+table.dt__table th.sortable > .dt__sort:focus-visible { outline: 2px solid var(--rain); outline-offset: -2px; }
+table.dt__table tbody tr:focus-visible { outline: 2px solid var(--rain); outline-offset: -2px; }
 table.dt__table th.sortable::after {
   content: "\2195";
   margin-left: 7px; font-size: 11px; color: var(--input-grey);
@@ -533,7 +616,7 @@ table.dt__table td.center, table.dt__table th.center { text-align: center; }
 .pager button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
 .pager button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .pager button:hover:not([disabled]) { background: var(--surface-2); }
-.pager button.is-active { background: var(--rain); border-color: var(--rain); color: #fff; z-index: 1; position: relative; }
+.pager button.is-active { background: var(--flare); border-color: var(--flare); color: var(--on-flare); z-index: 1; position: relative; }
 .pager button[disabled] { color: var(--input-grey); cursor: not-allowed; }
 
 /* row link style used in the portal's Description column */
@@ -546,8 +629,10 @@ table.dt__table td.center, table.dt__table th.center { text-align: center; }
 .card .deflist { grid-template-columns: minmax(0, 34%) minmax(0, 1fr); }
 .deflist > div { padding: 7px 12px; }
 .deflist > div:nth-child(4n+1), .deflist > div:nth-child(4n+2) { background: var(--row-stripe); }
+.deflist { margin: 0; }
 .deflist dt, .deflist .dk { font-weight: 400; color: var(--text); margin: 0; min-width: 0; }
 .deflist dd, .deflist .dv { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
 
 /* ==========================================================================
    Forms
@@ -671,18 +756,66 @@ table.dt__table td.center, table.dt__table th.center { text-align: center; }
 /* ==========================================================================
    Footer
    ========================================================================== */
+/* Portal footer — reuses the marketing footer treatment (Figma node 94:1147) */
 .foot {
-  background: var(--shadow); color: rgba(221,215,206,.62);
-  padding: 22px 30px; font-size: 12.5px;
-  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  background: var(--shadow); color: var(--bone);
+  padding: 40px 30px 26px;
 }
-.foot a { color: rgba(221,215,206,.62); }
-.foot a:hover { color: var(--flare); }
-.foot__logo { width: 132px; height: auto; opacity: .85; }
+.foot__cols {
+  display: grid; gap: 30px 8vw;
+  grid-template-columns: repeat(auto-fit, minmax(140px, max-content)) 1fr;
+  align-items: start;
+}
+.foot__head {
+  font-family: var(--font-cond);
+  color: var(--flare); text-transform: uppercase;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.12px;
+  margin: 0 0 10px;
+}
+.foot__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+/* spec: .footer_link */
+.foot a {
+  color: var(--bone);
+  letter-spacing: .07rem; text-transform: uppercase;
+  font-size: .6875rem; font-weight: 600; line-height: 1rem;
+  text-decoration: none;
+}
+.foot a:hover { color: var(--flare); text-decoration: none; }
+.foot__news { justify-self: end; max-width: 24rem; width: 100%; }
+.foot__news h3 { font-family: var(--font-body); font-weight: 400; font-size: 20px; margin: 0 0 12px; color: var(--bone); }
+.foot__form { display: flex; gap: 1rem; }
+.foot__form input {
+  flex: 1 1 auto; background: var(--bone); border: 0; color: var(--shadow);
+  padding: 14px 16px; font-size: 11px; letter-spacing: 1.12px; text-transform: uppercase;
+}
+.foot__form input::placeholder { color: var(--slate); }
+.foot__bottom {
+  margin-top: 34px; text-align: center;
+  display: grid; gap: 5px; justify-items: center;
+}
+.foot__copy {
+  text-transform: uppercase; font-size: 12px; letter-spacing: .06em; color: var(--bone);
+}
+.foot__legal { display: flex; gap: 14px; }
+.foot__legal a { color: var(--flare); font-size: 9px; }
+.foot__logo { width: 132px; height: auto; margin-bottom: 18px; }
+@media (max-width: 900px) { .foot__cols { grid-template-columns: repeat(2, 1fr); } .foot__news { justify-self: start; grid-column: 1 / -1; } .hero { margin: -20px -16px 20px; padding: 40px 16px; } }
 
 /* ==========================================================================
    Utility
    ========================================================================== */
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.skip-link {
+  position: absolute; left: 8px; top: -60px; z-index: 200;
+  background: var(--shadow); color: var(--bone); padding: 10px 16px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.12px; text-transform: uppercase;
+  transition: top .12s ease;
+}
+.skip-link:focus { top: 8px; text-decoration: none; }
 .hr { height: 1px; background: var(--line); border: 0; margin: 18px 0; }
 .nowrap { white-space: nowrap; }
 .tr { text-align: right; }

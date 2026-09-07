@@ -1,0 +1,3 @@
+# Internal back-office portal — never index.
+User-agent: *
+Disallow: /

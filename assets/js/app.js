@@ -4,6 +4,8 @@
 import { icon } from './icons.js';
 import { esc, initials, toast } from './ui.js';
 import * as D from './data.js';
+import { loadSession, currentUser, can, signOut, audit as logAudit } from './auth.js';
+import { ROUTE_CAPABILITY } from './policy.js';
 
 import dashboard      from './views/dashboard.js';
 import people         from './views/people.js';
@@ -189,6 +191,7 @@ const LAUNCHER = [
 /* --- shell markup --------------------------------------------------------- */
 function shell() {
   document.body.innerHTML = `
+  <a class="skip-link" href="#view">Skip to main content</a>
   <div class="app">
     <header class="topbar">
       <button class="icon-btn rail-toggle" id="railToggle" aria-label="Toggle navigation">${icon('menu')}</button>
@@ -201,23 +204,20 @@ function shell() {
         ${icon('search')}
         <input type="search" id="omni" placeholder="Search people, expeditions, requests…" aria-label="Global search" autocomplete="off">
       </div>
-      <button class="icon-btn" id="alertsBtn" aria-label="Alerts">${icon('bell')}
-        <span class="icon-btn__badge icon-btn__badge--go">${D.alerts.filter(a => a.status === 'Scheduled').length}</span></button>
-      <button class="icon-btn" id="launcherBtn" aria-label="App menu" aria-expanded="false">${icon('grid')}</button>
-      <a class="avatar" href="#/people/${D.me.id}" title="${esc(D.me.name)}">${esc(initials(D.me.name))}</a>
+      <button class="icon-btn" id="alertsBtn" aria-label="Alerts, ${D.alerts.filter(a => a.status === 'Scheduled').length} scheduled">${icon('bell')}
+        <span class="icon-btn__badge icon-btn__badge--go" aria-hidden="true">${D.alerts.filter(a => a.status === 'Scheduled').length}</span></button>
+      <button class="icon-btn" id="launcherBtn" aria-label="App menu" aria-expanded="false" aria-haspopup="dialog">${icon('grid')}</button>
+      <a class="avatar" href="#/people/${D.me.id}" title="Your profile">
+        <span class="visually-hidden">Your profile</span>${esc(initials(D.me.name))}</a>
+      <span id="whoami" class="visually-hidden"></span>
+      <button class="icon-btn" id="signOut" aria-label="Sign out" title="Sign out">${icon('logout')}</button>
     </header>
     <div class="shell">
       <nav class="rail" id="rail" aria-label="Primary"></nav>
-      <main class="main">
-        <div class="view" id="view" tabindex="-1"></div>
-        <footer class="foot">
-          <img class="foot__logo" src="assets/img/overland-logo-white.svg" alt="Overland Missions">
-          <span>Admin Portal · Build 2026.09</span>
-          <span style="margin-left:auto">Signed in as ${esc(D.me.name)} · ${esc(D.me.role)}</span>
-          <a href="#/audit">Audit log</a>
-          <a href="#/settings">Settings</a>
-        </footer>
-      </main>
+      <div class="main">
+        <main class="view" id="view" tabindex="-1" aria-labelledby="viewTitle"></main>
+        ${footerHtml()}
+      </div>
     </div>
   </div>`;
 
@@ -238,23 +238,42 @@ function shell() {
   });
 }
 
+/** A nav item is shown only if the signed-in user holds its route capability. */
+const mayOpen = id => {
+  const cap = ROUTE_CAPABILITY[id];
+  return !cap || can(cap);
+};
+
 function renderRail(activeId) {
-  document.getElementById('rail').innerHTML = NAV.map(group => `
+  const groups = NAV
+    .map(g => ({ ...g, items: g.items.filter(it => mayOpen(it.id)) }))
+    .filter(g => g.items.length);
+
+  document.getElementById('rail').innerHTML = groups.map(group => `
     <div class="rail__group">
-      <div class="rail__heading">${esc(group.heading)}</div>
+      <h2 class="rail__heading">${esc(group.heading)}</h2>
       ${group.items.map(it => {
-        const c = it.count ? it.count() : null;
-        return `<a class="rail__link${it.id === activeId ? ' is-active' : ''}" href="${it.href}">
+        let c = null;
+        try { c = it.count ? it.count() : null; } catch (_) { c = null; }
+        const on = it.id === activeId;
+        return `<a class="rail__link${on ? ' is-active' : ''}" href="${it.href}"${on ? ' aria-current="page"' : ''}>
           ${icon(it.icon)}<span>${esc(it.label)}</span>
-          ${c ? `<span class="rail__count">${c}</span>` : ''}</a>`;
+          ${c ? `<span class="rail__count"><span class="visually-hidden">, </span>${c}</span>` : ''}</a>`;
       }).join('')}
     </div>`).join('');
 }
 
+let launcherCleanup = null;
+function closeLauncher() {
+  const el = document.querySelector('.launcher');
+  const btn = document.getElementById('launcherBtn');
+  if (launcherCleanup) { launcherCleanup(); launcherCleanup = null; }
+  if (el) el.remove();
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+}
 function toggleLauncher() {
   const btn = document.getElementById('launcherBtn');
-  const open = document.querySelector('.launcher');
-  if (open) { open.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
+  if (document.querySelector('.launcher')) { closeLauncher(); btn.focus(); return; }
   const el = document.createElement('div');
   el.className = 'launcher';
   el.innerHTML = LAUNCHER.map(sec => `
@@ -265,16 +284,65 @@ function toggleLauncher() {
         <span style="position:relative">${icon(i.icon)}${b ? `<span class="icon-btn__badge${i.badgeGo ? ' icon-btn__badge--go' : ''}" style="top:-6px;right:-10px">${b}</span>` : ''}</span>
         <span>${esc(i.label)}</span></a>`;
     }).join('')}</div>`).join('');
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'Application menu');
   document.querySelector('.app').appendChild(el);
   btn.setAttribute('aria-expanded', 'true');
-  setTimeout(() => document.addEventListener('click', function away(e) {
-    if (!e.target.closest('.launcher') && !e.target.closest('#launcherBtn')) {
-      el.remove(); btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', away);
-    } else if (e.target.closest('.launcher a')) {
-      el.remove(); btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', away);
+  const firstLink = el.querySelector('a');
+  if (firstLink) firstLink.focus();
+
+  const away = e => {
+    if (e.target.closest('.launcher a') ||
+        (!e.target.closest('.launcher') && !e.target.closest('#launcherBtn'))) {
+      closeLauncher();
     }
-  }), 0);
+  };
+  const onKey = e => { if (e.key === 'Escape') { closeLauncher(); btn.focus(); } };
+  // one owner for every listener this popover adds
+  launcherCleanup = () => {
+    document.removeEventListener('click', away);
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('hashchange', closeLauncher);
+  };
+  setTimeout(() => {
+    document.addEventListener('click', away);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('hashchange', closeLauncher);
+  }, 0);
 }
+
+/* --- footer (mirrors the marketing footer, Figma node 94:1147) ----------- */
+function footerHtml() {
+  const cols = [
+    ['Go', [['Expeditions', '#/expeditions'], ['AMT', '#/amt']]],
+    ['Admin', [['Finance', '#/finance'], ['General Admin', '#/general-admin'], ['Audit Log', '#/audit']]],
+    ['People', [['Staff Directory', '#/staff'], ['CRM', '#/crm'], ['MPD', '#/mpd']]],
+    ['Support', [['Settings', '#/settings'], ['Security', '#/security']]]
+  ];
+  return `<footer class="foot">
+    <div class="foot__cols">
+      ${cols.map(([h, links]) => `<div>
+        <h2 class="foot__head">${esc(h)}</h2>
+        <ul class="foot__list">${links.map(([l, href]) =>
+          `<li><a href="${href}">${esc(l)}</a></li>`).join('')}</ul>
+      </div>`).join('')}
+      <div class="foot__news">
+        <h3>Internal notices</h3>
+        <form class="foot__form" id="footForm">
+          <label class="visually-hidden" for="footEmail">Email address for internal notices</label>
+          <input id="footEmail" type="email" placeholder="Type email here" autocomplete="email">
+          <button class="btn" type="submit">Subscribe</button>
+        </form>
+      </div>
+    </div>
+    <div class="foot__bottom">
+      <img class="foot__logo" src="assets/img/overland-logo-white.svg" alt="Overland Missions">
+      <div class="foot__copy">©Overland Missions ${SITE_YEAR} · Admin Portal</div>
+      <div class="foot__legal"><a href="#/settings">Privacy Policy</a><a href="#/settings">Terms and Services</a></div>
+    </div>
+  </footer>`;
+}
+const SITE_YEAR = 2026;
 
 /* --- global search -------------------------------------------------------- */
 function globalSearch(q) {
@@ -301,15 +369,30 @@ function route() {
     const m = re.exec(path);
     if (!m) continue;
     renderRail(navId);
+    document.getElementById('rail').classList.remove('is-open');
+
+    // Authorisation gate. This is a UX guard only — the server must re-check
+    // every capability on every request; see docs/SECURITY.md.
+    const cap = ROUTE_CAPABILITY[navId];
+    if (cap && !can(cap)) {
+      logAudit('route.denied', path, cap);
+      view.innerHTML = forbiddenHtml(cap);
+      window.scrollTo(0, 0);
+      view.focus({ preventScroll: true });
+      return;
+    }
+
     view.innerHTML = '';
     try {
       render(view, { params: m.slice(1), query });
     } catch (err) {
       console.error(err);
-      view.innerHTML = `<div class="card"><h2 class="card-title">Something went wrong</h2>
-        <p class="muted">${esc(err.message)}</p></div>`;
+      view.innerHTML = `<div class="card">
+        <h1 class="card-title" id="viewTitle">Something went wrong</h1>
+        <p class="muted">This screen failed to render. The error has been logged.</p>
+        <pre style="white-space:pre-wrap;font-size:12px;color:var(--text-muted)">${esc(err.message)}</pre>
+        <p style="margin-top:18px"><a class="btn" href="#/">Back to dashboard</a></p></div>`;
     }
-    document.getElementById('rail').classList.remove('is-open');
     window.scrollTo(0, 0);
     view.focus({ preventScroll: true });
     return;
@@ -317,12 +400,45 @@ function route() {
 
   renderRail(null);
   view.innerHTML = `<div class="card" style="text-align:center;padding:60px 24px">
-    <h1 class="card-title">Page not found</h1>
-    <p class="muted">No route matches <code>${esc(path)}</code>.</p>
+    <h1 class="card-title" id="viewTitle">Page not found</h1>
+    <p class="muted">No route matches that address.</p>
     <p style="margin-top:18px"><a class="btn" href="#/">Back to dashboard</a></p></div>`;
+  window.scrollTo(0, 0);
+}
+
+function forbiddenHtml(cap) {
+  const u = currentUser();
+  return `<div class="card" style="text-align:center;padding:56px 24px">
+    <h1 class="card-title" id="viewTitle">You do not have access to this area</h1>
+    <p class="muted" style="max-width:52ch;margin:0 auto">
+      Your role (<strong>${esc(u ? u.role : 'unknown')}</strong>) does not include the
+      <code>${esc(cap)}</code> capability. If you need it, ask an administrator to grant it
+      on the Roles &amp; Access screen.</p>
+    <p style="margin-top:20px"><a class="btn" href="#/">Back to dashboard</a></p></div>`;
 }
 
 /* --- boot ----------------------------------------------------------------- */
-shell();
-window.addEventListener('hashchange', route);
-route();
+(async function boot() {
+  try {
+    await loadSession();
+  } catch (err) {
+    document.body.innerHTML = `<div style="padding:60px;font-family:'Work Sans',sans-serif;max-width:52ch;margin:0 auto">
+      <h1 style="font-size:22px">Could not start a session</h1>
+      <p style="color:#5c5952">${esc(err.message)}</p>
+      <p><a href="">Try again</a></p></div>`;
+    return;
+  }
+  if (!currentUser()) { location.replace('/login'); return; }
+
+  shell();
+  const u = currentUser();
+  document.getElementById('whoami').textContent = `${u.name} · ${u.role}`;
+  document.getElementById('signOut').addEventListener('click', signOut);
+  document.getElementById('footForm').addEventListener('submit', e => {
+    e.preventDefault();
+    toast('Subscribed to internal notices');
+  });
+  window.addEventListener('hashchange', route);
+  route();
+  logAudit('session.start', u.userId);
+})();

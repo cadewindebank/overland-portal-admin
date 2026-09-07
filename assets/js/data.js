@@ -21,8 +21,10 @@ const chance = p => rnd() < p;
 /* --- reference lists ------------------------------------------------------ */
 export const TODAY = new Date('2026-09-07T09:00:00');
 
-const FIRST = ['Cade','Jasmin','Elijah','Brooke','Macie','Florence','Cody','Matthew','Britney','Chrisolythe','Abigail','Tim','Gale','Brandon','Ryann','Bailey','Steven','Devon','Josh','Naomi','Silas','Priya','Marcus','Hannah','Tobias','Imani','Grace','Owen','Lydia','Caleb','Esther','Jonah','Ruth','Andile','Thandiwe','Mateus','Sofia','Nadia','Karim','Yousef','Lena','Peter','Rachel','Simeon','Delphine','Kofi','Amara','Ezra','Talitha','Dominic'];
-const LAST  = ['Rivera','DeMarco','Anderson','TerHaar','Bassi','McGuire','Shaylor','Stotler','Ndunguna','Court','Edwards','Murray','Combrink','Holt','Eshak','Mwansa','Banda','Phiri','Tembo','Chirwa','Okafor','Mensah','Haddad','Nasser','Silva','Costa','Ferreira','Van Dyk','Botha','Pretorius','Kowalski','Fitzgerald','Ramirez','Whitfield','Osei','Abara','Mutale','Zulu','Kalunga','Sibanda'];
+const FIRST = ['Alex','Jordan','Riley','Morgan','Casey','Avery','Quinn','Rowan','Sasha','Devon','Naomi','Silas','Priya','Marcus','Hannah','Tobias','Imani','Grace','Owen','Lydia','Caleb','Esther','Jonah','Ruth','Andile','Thandiwe','Mateus','Sofia','Nadia','Karim','Yousef','Lena','Peter','Rachel','Simeon','Delphine','Kofi','Amara','Ezra','Talitha'];
+/* Surname pool is deliberately generic and regionally plausible — it must not
+   reproduce the names of real Overland staff. */
+const LAST  = ['Ashford','Bellamy','Carrington','Delacroix','Ellsworth','Fairbanks','Grayson','Hollis','Ingram','Jarrow','Kingsley','Lockhart','Marchetti','Northcott','Ospina','Pemberton','Quintero','Radcliffe','Stanhope','Thackeray','Underhill','Vasquez','Wetherby','Yardley','Mwansa','Banda','Phiri','Tembo','Chirwa','Okafor','Mensah','Haddad','Nasser','Silva','Costa','Ferreira','Van Dyk','Botha','Pretorius','Sibanda'];
 
 const CITIES = [
   ['Lakeland','Colorado','United States'], ['Lakeland','Florida','United States'],
@@ -57,6 +59,7 @@ for (let i = 0; i < 148; i++) {
     first: f, last: l,
     name: `${f} ${l}`,
     username: (l + f[0]).toLowerCase(),
+    // RFC 2606 reserved domain — never routes to a real mailbox
     email: `${f[0].toLowerCase()}${l.toLowerCase().replace(/[^a-z]/g, '')}@example.org`,
     phone: `${int(200, 989)}${int(200, 989)}${int(1000, 9999)}`,
     city, region, country,
@@ -74,10 +77,12 @@ for (let i = 0; i < 148; i++) {
     joined: isoDate(-int(120, 3200))
   });
 }
+/* The signed-in demo user. Deliberately a fictional identity on a reserved
+   domain — no real person's name, address or contact details in this repo. */
 users[0] = Object.assign(users[0], {
-  id: 'U1000', first: 'Cade', last: 'Rivera', name: 'Alex Rivera',
+  id: 'U1000', first: 'Alex', last: 'Rivera', name: 'Alex Rivera',
   username: 'riveraa', email: 'ariveraa@example.org', phone: '5550100',
-  city: 'Lakeland', region: 'Colorado', country: 'United States',
+  city: 'Lakeland', region: 'Florida', country: 'United States',
   type: 'Staff', department: 'Chaplaincy', base: 'Lakeland, Florida',
   role: 'Administrator', sector: 'Global', status: 'Active', balance: 8600
 });
@@ -439,7 +444,7 @@ export const contacts = Array.from({ length: 260 }, (_, i) => {
   return {
     id: 'C' + String(30000 + i),
     name: `${f} ${l}`, first: f, last: l,
-    email: `${f.toLowerCase()}.${l.toLowerCase().replace(/[^a-z]/g, '')}@example.com`,
+    email: `${f.toLowerCase()}.${l.toLowerCase().replace(/[^a-z]/g, '')}@example.org`,
     phone: `${int(200, 989)}${int(200, 989)}${int(1000, 9999)}`,
     bucket,
     owner: pick(users.slice(0, 24)).name,

@@ -103,7 +103,7 @@ export default function person(view, { params }) {
         <h3 class="section-title" style="margin-bottom:10px">${icon('person')} Emergency contacts</h3>
         <div style="background:var(--row-stripe);padding:12px 14px;border-radius:3px;max-width:340px">
           <div><a href="#/people">Tina ${esc(u.last)} (Mother)</a></div>
-          <div><a href="tel:5550101">719 761 3823</a></div>
+          <div><a href="tel:+15550100">555 0100</a></div>
         </div>`, { title: null });
     },
     Giving: () => {

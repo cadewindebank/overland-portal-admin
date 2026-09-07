@@ -25,6 +25,15 @@ import media          from './views/media.js';
 import audit          from './views/audit.js';
 import security       from './views/security.js';
 import settings       from './views/settings.js';
+import crm            from './views/crm.js';
+import contact        from './views/contact.js';
+import fundraising    from './views/fundraising.js';
+import recruiting     from './views/recruiting.js';
+import marketing      from './views/marketing.js';
+import mpd            from './views/mpd.js';
+import finance        from './views/finance.js';
+import generalAdmin   from './views/generalAdmin.js';
+import amt            from './views/amt.js';
 
 /* --- navigation model ----------------------------------------------------- */
 export const NAV = [
@@ -33,28 +42,42 @@ export const NAV = [
     items: [{ id: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: '#/' }]
   },
   {
+    heading: 'CRM',
+    items: [
+      { id: 'crm',         label: 'Contacts',    icon: 'people',  href: '#/crm' },
+      { id: 'fundraising', label: 'Fundraising', icon: 'give',    href: '#/fundraising' },
+      { id: 'recruiting',  label: 'Recruiting',  icon: 'clipboard', href: '#/recruiting',
+        count: () => D.signups.filter(x => !x.assigned).length },
+      { id: 'marketing',   label: 'Marketing',   icon: 'bell',    href: '#/marketing' }
+    ]
+  },
+  {
     heading: 'People',
     items: [
-      { id: 'people', label: 'People', icon: 'people', href: '#/people' },
-      { id: 'staff',  label: 'Staff Directory', icon: 'staff', href: '#/staff' },
-      { id: 'roles',  label: 'Roles & Access', icon: 'shield', href: '#/roles' }
+      { id: 'people', label: 'People',          icon: 'person', href: '#/people' },
+      { id: 'staff',  label: 'Staff Directory', icon: 'staff',  href: '#/staff' },
+      { id: 'mpd',    label: 'MPD',             icon: 'dollar', href: '#/mpd',
+        count: () => D.pendingFunds().length },
+      { id: 'roles',  label: 'Roles & Access',  icon: 'shield', href: '#/roles' }
     ]
   },
   {
     heading: 'Expeditions',
     items: [
-      { id: 'expeditions',  label: 'Expeditions', icon: 'compass', href: '#/expeditions' },
-      { id: 'applications', label: 'Applications', icon: 'clipboard', href: '#/applications',
+      { id: 'expeditions',  label: 'Expeditions',  icon: 'compass',   href: '#/expeditions' },
+      { id: 'amt',          label: 'AMT',          icon: 'book',      href: '#/amt' },
+      { id: 'applications', label: 'Applicants',   icon: 'clipboard', href: '#/applications',
         count: () => D.openApplications().length }
     ]
   },
   {
-    heading: 'Giving & Finance',
+    heading: 'Finance',
     items: [
-      { id: 'donations',     label: 'Donations', icon: 'give', href: '#/donations' },
-      { id: 'donationPages', label: 'Donation Pages', icon: 'flag', href: '#/donation-pages' },
-      { id: 'accounts',      label: 'Accounts & Balances', icon: 'bank', href: '#/accounts' },
-      { id: 'budgets',       label: 'Budgets', icon: 'chart', href: '#/budgets' }
+      { id: 'finance',       label: 'Finance Console',  icon: 'bank',  href: '#/finance' },
+      { id: 'donations',     label: 'Donations',        icon: 'give',  href: '#/donations' },
+      { id: 'donationPages', label: 'Donation Pages',   icon: 'flag',  href: '#/donation-pages' },
+      { id: 'accounts',      label: 'Accounts & Balances', icon: 'dollar', href: '#/accounts' },
+      { id: 'budgets',       label: 'Budgets',          icon: 'chart', href: '#/budgets' }
     ]
   },
   {
@@ -62,17 +85,18 @@ export const NAV = [
     items: [
       { id: 'requests', label: 'Request Queue', icon: 'inbox', href: '#/requests',
         count: () => D.pendingRequests().length },
-      { id: 'tasks',  label: 'Tasks', icon: 'checkCircle', href: '#/tasks', count: () => D.openTasks().length },
-      { id: 'alerts', label: 'Alerts & Comms', icon: 'bell', href: '#/alerts' },
-      { id: 'media',  label: 'Media Library', icon: 'image', href: '#/media' }
+      { id: 'tasks',  label: 'Tasks',         icon: 'checkCircle', href: '#/tasks', count: () => D.openTasks().length },
+      { id: 'alerts', label: 'Alerts & Comms', icon: 'bell',  href: '#/alerts' },
+      { id: 'media',  label: 'Media Library',  icon: 'image', href: '#/media' }
     ]
   },
   {
-    heading: 'System',
+    heading: 'Admin',
     items: [
-      { id: 'audit',    label: 'Audit Log', icon: 'history', href: '#/audit' },
-      { id: 'security', label: 'Security & Devices', icon: 'device', href: '#/security' },
-      { id: 'settings', label: 'Settings', icon: 'settings', href: '#/settings' }
+      { id: 'generalAdmin', label: 'General Admin',     icon: 'grid',     href: '#/general-admin' },
+      { id: 'audit',        label: 'Audit Log',         icon: 'history',  href: '#/audit' },
+      { id: 'security',     label: 'Security & Devices', icon: 'device',  href: '#/security' },
+      { id: 'settings',     label: 'Settings',          icon: 'settings', href: '#/settings' }
     ]
   }
 ];
@@ -80,6 +104,15 @@ export const NAV = [
 /* --- routes --------------------------------------------------------------- */
 const ROUTES = [
   [/^\/?$/,                     dashboard,     'dashboard'],
+  [/^\/crm$/,                   crm,           'crm'],
+  [/^\/crm\/([^/]+)$/,          contact,       'crm'],
+  [/^\/fundraising$/,           fundraising,   'fundraising'],
+  [/^\/recruiting$/,            recruiting,    'recruiting'],
+  [/^\/marketing$/,             marketing,     'marketing'],
+  [/^\/mpd$/,                   mpd,           'mpd'],
+  [/^\/finance$/,               finance,       'finance'],
+  [/^\/general-admin$/,         generalAdmin,  'generalAdmin'],
+  [/^\/amt$/,                   amt,           'amt'],
   [/^\/people$/,                people,        'people'],
   [/^\/people\/([^/]+)$/,       person,        'people'],
   [/^\/staff$/,                 staff,         'staff'],
@@ -115,11 +148,31 @@ const LAUNCHER = [
   { label: 'Form Links', items: D.REQUEST_TYPES.map(t => ({
     label: t.label, icon: t.icon, href: '#/requests?type=' + t.key
   }))},
-  { label: 'Leader', items: [{ label: 'CRM', icon: 'people', href: '#/people' }] },
+  { label: 'CRM', items: [
+    { label: 'Contacts', icon: 'people', href: '#/crm' },
+    { label: 'Fundraising', icon: 'give', href: '#/fundraising' },
+    { label: 'Recruiting', icon: 'clipboard', href: '#/recruiting' },
+    { label: 'Ministry', icon: 'compass', href: '#/crm?bucket=Ministry' },
+    { label: 'Marketing', icon: 'bell', href: '#/marketing' },
+    { label: 'Church Network', icon: 'home', href: '#/crm?bucket=Church%20Network' }
+  ]},
+  { label: 'Leader', items: [
+    { label: 'MPD', icon: 'dollar', href: '#/mpd' },
+    { label: 'Assignment Leaders', icon: 'staff', href: '#/roles' },
+    { label: 'Reports', icon: 'chart', href: '#/mpd' }
+  ]},
   { label: 'Staff', items: [
     { label: 'Budget', icon: 'chart', href: '#/budgets' },
     { label: 'Cybersecurity Policy', icon: 'shield', href: '#/settings' },
     { label: 'Directory', icon: 'book', href: '#/staff' }
+  ]},
+  { label: 'Admin', items: [
+    { label: 'Finance', icon: 'bank', href: '#/finance' },
+    { label: 'General Admin', icon: 'grid', href: '#/general-admin' },
+    { label: 'New Applicants', icon: 'clipboard', href: '#/applications' },
+    { label: 'Expedition Creation', icon: 'compass', href: '#/expeditions' },
+    { label: 'Payroll', icon: 'dollar', href: '#/finance?tab=Payroll' },
+    { label: 'EOY Receipts', icon: 'file', href: '#/finance?tab=Receipts' }
   ]},
   { label: 'Media', items: [
     { label: 'Brand Guide', icon: 'image', href: '#/media' },
@@ -228,6 +281,8 @@ function globalSearch(q) {
   const t = q.toLowerCase();
   const u = D.users.find(x => x.name.toLowerCase().includes(t) || x.email.toLowerCase().includes(t));
   if (u) return void (location.hash = '#/people/' + u.id);
+  const c = D.contacts.find(x => x.name.toLowerCase().includes(t) || x.email.toLowerCase().includes(t));
+  if (c) return void (location.hash = '#/crm/' + c.id);
   const e = D.expeditions.find(x => x.name.toLowerCase().includes(t));
   if (e) return void (location.hash = '#/expeditions/' + e.id);
   const r = D.requests.find(x => String(x.id).toLowerCase() === t || x.summary.toLowerCase().includes(t));

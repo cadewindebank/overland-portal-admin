@@ -419,3 +419,306 @@ export const userExpeditions = id =>
              .map(e => ({ ...e, membership: e.roster.find(m => m.userId === id) }));
 
 export const sum = (arr, f) => arr.reduce((s, x) => s + (f ? f(x) : x), 0);
+
+/* ==========================================================================
+   Phase 2 — entities from the Overland Missions mind map
+   (CRM, MPD, Admin Finance, Marketing, General Admin)
+   ========================================================================== */
+
+/* --- CRM contacts --------------------------------------------------------- */
+export const CONTACT_BUCKETS = ['Recruiting', 'MPD', 'Church Network', 'Personal', 'Ministry', 'Staff'];
+const CHURCHES = ['Grace Fellowship', 'Cornerstone Church', 'Living Water Chapel', 'Redeemer City Church',
+  'Faith Bible Church', 'New Hope Assembly', 'The Rock Church', 'Harvest Community'];
+
+export const contacts = Array.from({ length: 260 }, (_, i) => {
+  const [f, l] = [pick(FIRST), pick(LAST)];
+  const [city, region, country] = pick(CITIES);
+  const bucket = pick(CONTACT_BUCKETS);
+  const lastGift = chance(.55) ? isoDate(-int(5, 900)) : null;
+  const lifetime = lastGift ? money(50, 26000) : 0;
+  return {
+    id: 'C' + String(30000 + i),
+    name: `${f} ${l}`, first: f, last: l,
+    email: `${f.toLowerCase()}.${l.toLowerCase().replace(/[^a-z]/g, '')}@example.com`,
+    phone: `${int(200, 989)}${int(200, 989)}${int(1000, 9999)}`,
+    bucket,
+    owner: pick(users.slice(0, 24)).name,
+    city, region, country,
+    church: bucket === 'Church Network' || chance(.4) ? pick(CHURCHES) : '—',
+    birthday: isoDate(-int(6000, 22000)).slice(5),
+    stage: pick(['New', 'Contacted', 'Meeting Set', 'Committed', 'Giving', 'Lapsed', 'Cold']),
+    score: int(1, 100),
+    lifetime,
+    lastGift,
+    lapsed: !!lastGift && lastGift < '2025-09-07',
+    recurring: chance(.2),
+    lastTouch: isoDate(-int(0, 220)),
+    tags: [bucket, chance(.3) ? 'Past Team Member' : null, chance(.2) ? 'Monthly Partner' : null].filter(Boolean),
+    notes: int(0, 9),
+    relationships: chance(.35) ? `Spouse of ${pick(FIRST)} ${l}` : null
+  };
+});
+
+export const CONTACT_STAGES = ['New', 'Contacted', 'Meeting Set', 'Committed', 'Giving', 'Lapsed', 'Cold'];
+
+/* --- reminders & events --------------------------------------------------- */
+export const reminders = Array.from({ length: 54 }, (_, i) => {
+  const off = int(-30, 45);
+  const c = pick(contacts);
+  return {
+    id: 'RM' + String(4000 + i),
+    title: pick(['Follow up on partnership ask', 'Send thank-you note', 'Call after church visit',
+      'Share newsletter', 'Coffee meeting', 'Check in before departure', 'Send year-end receipt']),
+    contact: c.name, contactId: c.id,
+    owner: pick(users.slice(0, 20)).name,
+    due: isoDate(off),
+    past: off < 0,
+    channel: pick(['Call', 'Email', 'Text', 'In person']),
+    status: off < 0 ? pick(['Open', 'Open', 'Done']) : 'Open'
+  };
+});
+
+export const events = Array.from({ length: 28 }, (_, i) => {
+  const off = int(-180, 150);
+  return {
+    id: 'EV' + String(500 + i),
+    title: pick(['Support banquet', 'Church presentation', 'Vision night', 'Team commissioning',
+      'Donor lunch', 'Info meeting', 'Revival Week', 'Alumni gathering']),
+    date: isoDate(off),
+    past: off < 0,
+    location: pick(['Lakeland, FL', 'Lakeland, CO', 'Nashville, TN', 'Online', 'Greenville, SC']),
+    host: pick(users.slice(0, 20)).name,
+    invited: int(15, 340),
+    attended: off < 0 ? int(8, 260) : 0,
+    raised: off < 0 ? money(0, 42000) : 0
+  };
+});
+
+/* --- recruiting ----------------------------------------------------------- */
+export const signups = Array.from({ length: 46 }, (_, i) => {
+  const c = pick(contacts);
+  const e = pick(expeditions);
+  return {
+    id: 'SU' + String(700 + i),
+    name: c.name, contactId: c.id,
+    email: c.email,
+    interest: chance(.4) ? 'AMT' : 'Expedition',
+    target: e.name,
+    source: pick(['Sign Up Sheet', 'Website', 'Church visit', 'Referral', 'Instagram', 'Past team member']),
+    created: isoDate(-int(0, 260)),
+    assigned: chance(.7) ? pick(users.slice(0, 18)).name : null,
+    converted: chance(.3),
+    status: pick(['New', 'Contacted', 'Applied', 'Not now'])
+  };
+});
+
+/* --- marketing ------------------------------------------------------------ */
+export const campaigns = Array.from({ length: 22 }, (_, i) => {
+  const sent = int(300, 5200);
+  const opened = Math.round(sent * (0.2 + rnd() * 0.5));
+  return {
+    id: 'CM' + String(200 + i),
+    name: pick(['Spring Expedition Launch', 'Year-End Giving', 'Revival Week Invite', 'Monthly Field Update',
+      'AMT Applications Open', 'Water Project Appeal', 'Alumni Re-engagement', 'Giving Tuesday']) + ' ' + (2025 + int(0, 1)),
+    kind: pick(['Campaign', 'Campaign', 'Automation', 'Journey']),
+    audience: pick(['All Donors', 'Lapsed Donors', 'Past Team Members', 'Church Network', 'Recruiting Leads']),
+    status: pick(['Sent', 'Sent', 'Scheduled', 'Draft', 'Running']),
+    sent, opened,
+    clicked: Math.round(opened * (0.08 + rnd() * 0.3)),
+    conversions: int(0, 90),
+    revenue: money(0, 58000),
+    date: isoDate(-int(0, 420))
+  };
+});
+
+export const blogs = Array.from({ length: 18 }, (_, i) => ({
+  id: 'BL' + String(100 + i),
+  title: pick(['A well in Simonga', 'What a village visit really looks like', 'Meet the May Mozambique team',
+    'Why we train nationals first', 'Notes from the Amazon', 'Five years in Cairo', 'The road to Pemba']),
+  author: pick(users.slice(0, 20)).name,
+  status: pick(['Published', 'Published', 'Draft', 'Scheduled']),
+  published: isoDate(-int(0, 500)),
+  views: int(80, 9400),
+  category: pick(['Field Stories', 'Expeditions', 'Ministry', 'Updates'])
+}));
+
+export const surveys = Array.from({ length: 9 }, (_, i) => ({
+  id: 'SV' + String(60 + i),
+  title: pick(['Post-expedition debrief', 'Donor satisfaction', 'Staff care check-in',
+    'Applicant experience', 'Team leader feedback']) + ' ' + (i + 1),
+  status: pick(['Open', 'Open', 'Closed', 'Draft']),
+  responses: int(4, 240),
+  sent: int(20, 600),
+  created: isoDate(-int(10, 400))
+}));
+
+/* --- MPD ------------------------------------------------------------------ */
+const staffOnly = () => users.filter(u => u.type === 'Staff');
+
+export const mpders = staffOnly().map((u, i) => {
+  const goal = Math.round(money(2800, 7200) / 50) * 50;
+  const raised = Math.round(goal * (0.2 + rnd() * 0.95));
+  return {
+    id: 'MP' + String(1400 + i),
+    userId: u.id, name: u.name,
+    coach: pick(staffOnly().slice(0, 8)).name,
+    monthlyGoal: goal,
+    monthlyRaised: Math.min(raised, goal * 1.1),
+    pct: Math.min(140, Math.round((raised / goal) * 100)),
+    partners: int(4, 96),
+    newThisMonth: int(0, 7),
+    lapsedPartners: int(0, 11),
+    appointments: int(0, 22),
+    phase: pick(['Pre-field', 'Building', 'Fully Funded', 'Maintenance', 'At Risk']),
+    lastCoaching: isoDate(-int(2, 120))
+  };
+});
+
+export const fundsRequests = Array.from({ length: 38 }, (_, i) => {
+  const m = pick(mpders);
+  return {
+    id: 'FR' + String(3300 + i),
+    mpder: m.name, userId: m.userId,
+    period: pick(['September 2026', 'August 2026', 'July 2026']),
+    requested: money(800, 5200),
+    available: money(0, 9000),
+    submitted: isoDateTime(-int(0, 60)),
+    coach: m.coach,
+    status: chance(.4) ? 'Pending' : pick(['Approved', 'Paid', 'Denied', 'In Review'])
+  };
+});
+
+/* --- Admin finance -------------------------------------------------------- */
+export const payrollRuns = Array.from({ length: 12 }, (_, i) => {
+  const gross = money(180000, 260000);
+  return {
+    id: 'PR' + String(900 + i),
+    period: ['Sep 2026','Aug 2026','Jul 2026','Jun 2026','May 2026','Apr 2026','Mar 2026','Feb 2026','Jan 2026','Dec 2025','Nov 2025','Oct 2025'][i],
+    people: int(52, 64),
+    gross,
+    taxes: gross * 0.148,
+    net: gross * 0.852,
+    status: i === 0 ? 'Draft' : (i === 1 ? 'Pending' : 'Paid'),
+    runDate: isoDate(-i * 30)
+  };
+});
+
+export const mplLines = Array.from({ length: 120 }, (_, i) => {
+  const u = pick(staffOnly());
+  return {
+    id: 'ML' + String(50000 + i),
+    date: isoDate(-int(0, 200)),
+    staff: u.name, userId: u.id,
+    category: pick(['Ministry Expense', 'Travel', 'Vehicle', 'Housing', 'Medical', 'Equipment', 'Hospitality']),
+    amount: money(18, 3400),
+    receipt: chance(.82),
+    reconciled: chance(.68),
+    account: pick(['Operating', 'Field', 'Project', 'Restricted']),
+    memo: pick(['Fuel — Livingstone run', 'Airfare change fee', 'Clinic supplies', 'Team meals',
+      'Visa renewal', 'Generator parts', 'Printing'])
+  };
+});
+
+export const easyScanQueue = Array.from({ length: 26 }, (_, i) => ({
+  id: 'ES' + String(880 + i),
+  batch: 'BATCH-' + (2026000 + int(1, 240)),
+  received: isoDate(-int(0, 20)),
+  items: int(3, 48),
+  amount: money(400, 42000),
+  type: pick(['Checks', 'Remittance', 'Receipts']),
+  status: pick(['Awaiting Review', 'Awaiting Review', 'Posted', 'Exception']),
+  operator: pick(users.slice(0, 12)).name
+}));
+
+export const qbCustomers = Array.from({ length: 48 }, (_, i) => {
+  const c = pick(contacts);
+  return {
+    id: 'QB' + String(4100 + i),
+    name: chance(.35) ? pick(CHURCHES) : c.name,
+    qbId: 'C-' + int(1000, 9999),
+    synced: chance(.85),
+    lastSync: isoDateTime(-int(0, 30)),
+    balance: money(-400, 9000),
+    ytd: money(0, 48000),
+    issue: chance(.12) ? pick(['Duplicate record', 'Missing tax ID', 'Address mismatch']) : null
+  };
+});
+
+export const receiptBatches = Array.from({ length: 20 }, (_, i) => ({
+  id: 'RB' + String(600 + i),
+  kind: i < 4 ? 'End of Year' : 'Weekly',
+  period: i < 4 ? `FY${2022 + i}` : `Week ${52 - i} · 2026`,
+  count: int(40, 2600),
+  amount: money(9000, 480000),
+  generated: isoDate(-int(1, 300)),
+  delivered: chance(.8),
+  status: pick(['Sent', 'Sent', 'Generating', 'Draft'])
+}));
+
+export const interbankTransfers = Array.from({ length: 24 }, (_, i) => ({
+  id: 'IB' + String(770 + i),
+  from: pick(['Operating (US)', 'Restricted (US)', 'Zambia Kwacha', 'Mozambique Metical', 'Egypt Pound']),
+  to: pick(['Zambia Kwacha', 'Mozambique Metical', 'Egypt Pound', 'Lebanon Account', 'Operating (US)']),
+  amount: money(4000, 120000),
+  rate: Math.round((rnd() * 25 + 1) * 1000) / 1000,
+  initiated: isoDate(-int(0, 120)),
+  audited: chance(.7),
+  status: pick(['Settled', 'Settled', 'In Transit', 'Needs Audit'])
+}));
+
+/* --- General Admin -------------------------------------------------------- */
+export const countries = [
+  ['Zambia', 'Southern Africa', 'ZMW', 'Open', 2],
+  ['Mozambique', 'Southern Africa', 'MZN', 'Open', 1],
+  ['South Africa', 'Southern Africa', 'ZAR', 'Open', 1],
+  ['Malawi', 'Southern Africa', 'MWK', 'Restricted', 0],
+  ['Egypt', 'North Africa', 'EGP', 'Open', 1],
+  ['Morocco', 'North Africa', 'MAD', 'Restricted', 0],
+  ['Lebanon', 'Middle East', 'LBP', 'Elevated Risk', 1],
+  ['Jordan', 'Middle East', 'JOD', 'Open', 0],
+  ['Peru', 'South America', 'PEN', 'Open', 1],
+  ['Brazil', 'South America', 'BRL', 'Open', 0],
+  ['DR Congo', 'Southern Africa', 'CDF', 'Elevated Risk', 0]
+].map(([name, region, currency, travel, bases], i) => ({
+  id: 'CO' + String(40 + i), name, region, currency, travel, bases,
+  visa: pick(['On arrival', 'Pre-approval', 'eVisa', 'Not required']),
+  advisory: travel === 'Open' ? 'Level 1' : (travel === 'Restricted' ? 'Level 3' : 'Level 2'),
+  staff: int(0, 26)
+}));
+
+export const regions = [
+  ['Southern Africa', 4, 26], ['North Africa', 2, 9], ['Middle East', 2, 7],
+  ['South America', 2, 8], ['Global', 0, 12]
+].map(([name, bases, staff], i) => ({
+  id: 'RG' + String(10 + i), name, bases, staff,
+  director: pick(users.slice(0, 12)).name,
+  expeditions: expeditions.filter(e => e.sector === name).length
+}));
+
+export const groups = Array.from({ length: 16 }, (_, i) => ({
+  id: 'GR' + String(300 + i),
+  name: pick(['Field Leadership', 'Finance Team', 'Media Team', 'Base Directors', 'Aviation',
+    'Chaplains', 'Medical', 'Expedition Leaders', 'Home Office', 'IT']) + (i > 9 ? ' ' + (i - 9) : ''),
+  members: int(3, 34),
+  kind: pick(['Permission Group', 'Mailing List', 'Both']),
+  owner: pick(users.slice(0, 12)).name,
+  created: isoDate(-int(60, 1600))
+}));
+
+export const expeditionInsurance = expeditions.map((e, i) => ({
+  id: 'EI' + String(80 + i),
+  expedition: e.name, expeditionId: e.id,
+  policy: 'TTC-' + int(100000, 999999),
+  covered: e.roster.length,
+  pending: Math.max(0, e.roster.filter(m => !m.insurance).length),
+  premium: e.roster.length * 42,
+  effective: e.start,
+  status: e.roster.every(m => m.insurance) ? 'Complete' : 'Incomplete'
+}));
+
+/* --- accessors ------------------------------------------------------------ */
+export const findContact = id => contacts.find(c => c.id === id);
+export const contactsIn = bucket => contacts.filter(c => c.bucket === bucket);
+export const lapsedDonors = () => contacts.filter(c => c.lapsed);
+export const openReminders = () => reminders.filter(r => r.status === 'Open');
+export const pendingFunds = () => fundsRequests.filter(r => r.status === 'Pending' || r.status === 'In Review');

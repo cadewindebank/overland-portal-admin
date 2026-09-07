@@ -7,8 +7,6 @@ public site and the member-facing portal.
 Where the member portal is where staff, expedition members and donors *submit* things, this is where
 the office *decides* on them — approvals, rosters, balances, access and the audit trail behind it all.
 
-![Portal](docs/dashboard.png)
-
 ---
 
 ## Running it

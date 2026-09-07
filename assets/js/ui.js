@@ -153,7 +153,10 @@ export class DataTable {
    * @param {object} opts
    *   columns: [{ key, label, className?, render?(row), value?(row), sortable?, filter? }]
    *   rows:    array of records
-   *   title, pageSize, toolbar (extra HTML), columnFilters (bool), onRowClick(row)
+   *   title:   shown in the toolbar, used for the CSV filename and print header
+   *   hideTitle: keep the title for export/print but don't render it (the card
+   *              header already names the table)
+   *   pageSize, toolbar (extra HTML), columnFilters (bool), onRowClick(row)
    */
   constructor(opts) {
     this.o = Object.assign({ pageSize: 10, columnFilters: true, sortable: true }, opts);
@@ -231,7 +234,7 @@ export class DataTable {
     return `
     <div class="dt" id="${this.id}">
       <div class="dt__head">
-        ${this.o.title ? `<h2 class="dt__title">${esc(this.o.title)}</h2>` : ''}
+        ${this.o.title && !this.o.hideTitle ? `<h2 class="dt__title">${esc(this.o.title)}</h2>` : ''}
         <div class="dt-btn-group">
           <button class="dt-btn" data-act="csv">CSV</button>
           <button class="dt-btn" data-act="print">Print</button>

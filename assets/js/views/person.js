@@ -112,7 +112,7 @@ export default function person(view, { params }) {
         icon: 'give'
       });
       new DataTable({
-        title: `${u.name} — giving`, rows: gifts, pageSize: 10, columnFilters: false, sortKey: 'date', sortDir: 'desc',
+        hideTitle: true, title: `${u.name} — giving`, rows: gifts, pageSize: 10, columnFilters: false, sortKey: 'date', sortDir: 'desc',
         columns: [
           { key: 'date', label: 'Date', render: g => shortDate(g.date) },
           { key: 'amount', label: 'Amount', className: 'num', render: g => usd(g.amount) },
@@ -152,7 +152,7 @@ export default function person(view, { params }) {
     Requests: () => {
       body.innerHTML = card('<div id="reqTable"></div>', { title: `Requests submitted (${reqs.length})`, icon: 'inbox' });
       new DataTable({
-        title: `${u.name} — requests`, rows: reqs, pageSize: 10, columnFilters: false, sortKey: 'submitted', sortDir: 'desc',
+        hideTitle: true, title: `${u.name} — requests`, rows: reqs, pageSize: 10, columnFilters: false, sortKey: 'submitted', sortDir: 'desc',
         onRowClick: r => { location.hash = '#/requests/' + r.id; },
         columns: [
           { key: 'id', label: 'ID', render: r => `<a href="#/requests/${r.id}">${r.id}</a>` },

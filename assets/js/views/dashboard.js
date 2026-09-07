@@ -99,7 +99,7 @@ export default function dashboard(view) {
     </div>`;
 
   new DataTable({
-    title: 'Decision queue',
+    hideTitle: true, title: 'Decision queue',
     rows: pending.slice(0, 40),
     pageSize: 8,
     columnFilters: false,

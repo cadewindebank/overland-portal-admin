@@ -139,12 +139,8 @@ function shell() {
   <div class="app">
     <header class="topbar">
       <button class="icon-btn rail-toggle" id="railToggle" aria-label="Toggle navigation">${icon('menu')}</button>
-      <a class="brand" href="#/">
-        <svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true">
-          <rect width="24" height="24" rx="3" fill="#0f0e0d"/>
-          <path d="M12 5.6l6 12.8H6z" fill="#fff"/>
-        </svg>
-        <span class="brand__word">Overland</span>
+      <a class="brand" href="#/" aria-label="Overland Missions — Admin Portal home">
+        <img class="brand__logo" src="assets/img/overland-logo-black.svg" alt="Overland Missions">
         <span class="brand__tag">Admin Portal</span>
       </a>
       <div class="topbar__spacer"></div>
@@ -162,7 +158,7 @@ function shell() {
       <main class="main">
         <div class="view" id="view" tabindex="-1"></div>
         <footer class="foot">
-          <span class="foot__brand">Overland Missions</span>
+          <img class="foot__logo" src="assets/img/overland-logo-white.svg" alt="Overland Missions">
           <span>Admin Portal · Build 2026.09</span>
           <span style="margin-left:auto">Signed in as ${esc(D.me.name)} · ${esc(D.me.role)}</span>
           <a href="#/audit">Audit log</a>

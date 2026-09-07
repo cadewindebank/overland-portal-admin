@@ -30,10 +30,10 @@ export default function expedition(view, { params }) {
     <div class="grid grid--main">
       <div class="stack">
         ${card(`
-          <div class="grid grid--5" style="gap:14px">
+          <div class="member-grid">
             ${e.roster.map(m => `
               <a href="#/people/${m.userId}" class="member" style="text-decoration:none;color:inherit">
-                <span class="member__photo"><span>${esc(initials(m.name))}</span>
+                <span class="member__photo"><span class="member__initials">${esc(initials(m.name))}</span>
                   <span class="member__tag ${m.role === 'Team Member' ? '' : 'member__tag--lead'}${m.pct >= 100 ? ' member__tag--pct' : ''}">${m.pct >= 100 ? '100%' : esc(m.role)}</span>
                 </span>
                 <span class="member__body">
@@ -91,7 +91,7 @@ export default function expedition(view, { params }) {
     </div>`;
 
   new DataTable({
-    title: `${e.name} — roster`, rows: e.roster.map(m => ({ ...m, id: m.userId })),
+    hideTitle: true, title: `${e.name} — roster`, rows: e.roster.map(m => ({ ...m, id: m.userId })),
     pageSize: 10, columnFilters: false, sortKey: 'pct', sortDir: 'asc',
     onRowClick: m => { location.hash = '#/people/' + m.userId; },
     columns: [
@@ -108,7 +108,7 @@ export default function expedition(view, { params }) {
   }).mount(view.querySelector('#rosterTable'));
 
   new DataTable({
-    title: `${e.name} — applications`, rows: apps, pageSize: 8, columnFilters: false, sortKey: 'submitted', sortDir: 'desc',
+    hideTitle: true, title: `${e.name} — applications`, rows: apps, pageSize: 8, columnFilters: false, sortKey: 'submitted', sortDir: 'desc',
     columns: [
       { key: 'name', label: 'Applicant', render: a => `<a href="#/people/${a.userId}">${esc(a.name)}</a>` },
       { key: 'submitted', label: 'Submitted', render: a => shortDate(a.submitted) },

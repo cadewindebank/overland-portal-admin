@@ -1,8 +1,12 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, modal, toast,
+         tabsUrl, textField, selectField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
+import { ROLES_BY_PRIVILEGE } from '../policy.js';
 
-export default function generalAdmin(view) {
+export default function generalAdmin(view, { query }) {
+  const render = () => generalAdmin(view, { query });
   view.innerHTML = `
     ${pageHead({
       title: 'General Admin',
@@ -22,16 +26,13 @@ export default function generalAdmin(view) {
                meta: 'Team members without cover' })}
     </div>
 
-    <div class="tabs" id="tabs">
-      ${['Countries','Regions','Groups','Expedition insurance','Stock photos'].map((t, i) =>
-        `<button data-tab="${t}"${i === 0 ? ' class="is-active"' : ''}>${t}</button>`).join('')}
-    </div>
+    <div id="tabHost"></div>
     <div id="gaBody"></div>`;
 
   const body = view.querySelector('#gaBody');
   const mount = opts => { body.innerHTML = '<div id="t"></div>'; new DataTable(Object.assign({ pageSize: 15, columnFilters: false }, opts)).mount(body.querySelector('#t')); };
 
-  const tabs = {
+  const panels = {
     Countries: () => mount({
       title: 'Countries', rows: D.countries, sortKey: 'name',
       columns: [
@@ -45,7 +46,8 @@ export default function generalAdmin(view) {
                              c.travel === 'Open' ? 'approved' : c.travel === 'Restricted' ? 'denied' : 'pending') },
         { key: 'bases', label: 'Bases', className: 'num' },
         { key: 'staff', label: 'Staff', className: 'num' },
-        { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Edit</button>` }
+        { key: 'act', label: '', sortable: false, filter: false,
+          render: c => `<button class="btn-mini" data-edit="${c.id}" data-kind="countries">Edit</button>` }
       ]
     }),
     Regions: () => mount({
@@ -56,7 +58,8 @@ export default function generalAdmin(view) {
         { key: 'bases', label: 'Bases', className: 'num' },
         { key: 'staff', label: 'Staff', className: 'num' },
         { key: 'expeditions', label: 'Expeditions', className: 'num' },
-        { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Edit</button>` }
+        { key: 'act', label: '', sortable: false, filter: false,
+          render: r => `<button class="btn-mini" data-edit="${r.id}" data-kind="regions">Edit</button>` }
       ]
     }),
     Groups: () => mount({
@@ -67,7 +70,8 @@ export default function generalAdmin(view) {
         { key: 'members', label: 'Members', className: 'num' },
         { key: 'owner', label: 'Owner' },
         { key: 'created', label: 'Created', render: g => shortDate(g.created) },
-        { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Manage</button>` }
+        { key: 'act', label: '', sortable: false, filter: false,
+          render: g => `<button class="btn-mini" data-manage="${g.id}">Manage</button>` }
       ]
     }),
     'Expedition insurance': () => mount({
@@ -104,13 +108,88 @@ export default function generalAdmin(view) {
           actions: '<a class="btn-mini" href="#/media">Open media library</a>' });
     }
   };
-  tabs.Countries();
-  view.querySelector('#tabs').addEventListener('click', e => {
-    const b = e.target.closest('[data-tab]');
-    if (!b) return;
-    view.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('is-active', x === b));
-    tabs[b.dataset.tab]();
+  const strip = tabsUrl(Object.keys(panels), n => panels[n](), query.get('tab'));
+  view.querySelector('#tabHost').innerHTML = strip.html;
+  strip.mount(view);
+  panels[strip.active]();
+
+  // in-table actions were rendered with no handler at all
+  body.addEventListener('click', e => {
+    const ed = e.target.closest('[data-edit]');
+    if (ed) return editRow(ed.dataset.kind, ed.dataset.edit);
+    const mg = e.target.closest('[data-manage]');
+    if (mg) return manageGroup(mg.dataset.manage);
   });
+
+  function editRow(kind, id) {
+    const rows = { countries: D.countries, regions: D.regions }[kind] || [];
+    const row = rows.find(r => String(r.id) === String(id));
+    if (!row) return;
+    const fields = kind === 'countries'
+      ? `${textField('Country', { value: row.name })}
+         ${selectField('Region', D.regions.map(r => r.name), { value: row.region })}
+         ${textField('Currency', { value: row.currency })}
+         ${selectField('Visa', ['On arrival', 'Pre-approval', 'eVisa', 'Not required'], { value: row.visa })}
+         ${selectField('Travel status', ['Open', 'Restricted', 'Elevated Risk'], { value: row.travel })}
+         ${textField('Bases', { type: 'number', value: row.bases })}`
+      : `${textField('Region', { value: row.name })}
+         ${selectField('Director', D.users.slice(0, 20).map(u => u.name), { value: row.director })}
+         ${textField('Bases', { type: 'number', value: row.bases })}`;
+    modal({
+      title: 'Edit ' + row.name, confirm: 'Save changes',
+      body: `<div class="form-grid form-grid--2">${fields}</div>`,
+      onConfirm: scrim => {
+        const v = readForm(scrim);
+        const patch = kind === 'countries'
+          ? { name: v['Country'], region: v['Region'], currency: v['Currency'],
+              visa: v['Visa'], travel: v['Travel status'], bases: Number(v['Bases']) || 0 }
+          : { name: v['Region'], director: v['Director'], bases: Number(v['Bases']) || 0 };
+        store.update(kind, row.id, patch);
+        toast(row.name + ' updated');
+        render();
+      }
+    });
+  }
+
+  function manageGroup(id) {
+    const g = D.groups.find(x => String(x.id) === String(id));
+    if (!g) return;
+    const members = D.users.filter(u => (u.groups || []).includes(g.name));
+    modal({
+      title: 'Manage ' + g.name, confirm: 'Save group', wide: true,
+      body: `<div class="form-grid form-grid--2">
+          ${textField('Group name', { value: g.name })}
+          ${selectField('Type', ['Permission Group', 'Mailing List', 'Both'], { value: g.kind })}
+        </div>
+        <div class="hr"></div>
+        <h3 class="section-title" style="margin-bottom:8px">Members (${members.length})</h3>
+        <div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:3px;padding:8px">
+          ${D.users.filter(u => u.type === 'Staff').slice(0, 40).map(u => `
+            <label class="check" style="padding:4px 2px">
+              <input type="checkbox" data-member="${u.id}"${(u.groups || []).includes(g.name) ? ' checked' : ''}>
+              <span>${esc(u.name)} <span class="muted">· ${esc(u.department)}</span></span></label>`).join('')}
+        </div>`,
+      onConfirm: scrim => {
+        const v = readForm(scrim);
+        let added = 0;
+        scrim.querySelectorAll('[data-member]').forEach(box => {
+          const u = D.findUser(box.dataset.member);
+          if (!u) return;
+          const has = (u.groups || []).includes(g.name);
+          if (box.checked && !has) {
+            store.update('users', u.id, { groups: [...(u.groups || []), g.name] }, { silent: true });
+            added++;
+          } else if (!box.checked && has) {
+            store.update('users', u.id, { groups: (u.groups || []).filter(x => x !== g.name) }, { silent: true });
+          }
+        });
+        const count = D.users.filter(u => (u.groups || []).includes(v['Group name'])).length;
+        store.update('groups', g.id, { name: v['Group name'], kind: v['Type'], members: count });
+        toast(`${v['Group name']} saved — ${count} members`);
+        render();
+      }
+    });
+  }
 
   view.querySelector('#createUser').addEventListener('click', () => modal({
     title: 'Create a user', confirm: 'Create user', wide: true,
@@ -121,10 +200,25 @@ export default function generalAdmin(view) {
       <div class="field span-2"><label>Email</label><input type="email"></div>
       <div class="field"><label>Account type</label><select><option>Staff</option><option>Expedition Member</option><option>Donor</option></select></div>
       <div class="field"><label>Region</label><select>${D.regions.map(r => `<option>${esc(r.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Portal role</label><select>${['Read Only','Staff','Expedition Leader','Finance','Base Director','Media','Donor Relations','Administrator'].map(r => `<option>${r}</option>`).join('')}</select></div>
+      ${selectField('Portal role', ROLES_BY_PRIVILEGE)}
       <div class="field"><label>Groups</label><select>${D.groups.map(g => `<option>${esc(g.name)}</option>`).join('')}</select></div>
     </div>`,
-    onConfirm: () => toast('User created — invitation sent')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['First name', 'Last name', 'Email']);
+      if (v === false) return false;
+      const row = store.create('users', {
+        first: v['First name'], last: v['Last name'], name: `${v['First name']} ${v['Last name']}`,
+        username: v['Username'] || (v['Last name'] + v['First name'][0]).toLowerCase(),
+        email: v['Email'], phone: '', city: '—', region: v['Region'] || '—', country: '—',
+        type: v['Account type'], department: 'Unassigned', base: '—',
+        role: v['Portal role'], sector: v['Region'] || 'Global', status: 'Invited',
+        twoFactor: false, passportExpiry: null, insurance: 'Missing', balance: 0,
+        lastLogin: '', joined: new Date().toISOString().slice(0, 10),
+        groups: v['Groups'] ? [v['Groups']] : []
+      });
+      toast('User created — invitation sent');
+      location.hash = '#/people/' + row.id;
+    }
   }));
   view.querySelector('#createExp').addEventListener('click', () => { location.hash = '#/expeditions'; });
   view.querySelector('#createGroup').addEventListener('click', () => modal({
@@ -134,6 +228,13 @@ export default function generalAdmin(view) {
       <div class="field"><label>Type</label><select><option>Permission Group</option><option>Mailing List</option><option>Both</option></select></div>
       <div class="field"><label>Owner</label><select>${D.users.slice(0, 20).map(u => `<option>${esc(u.name)}</option>`).join('')}</select></div>
     </div>`,
-    onConfirm: () => toast('Group created')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Group name']);
+      if (v === false) return false;
+      store.create('groups', { name: v['Group name'], kind: v['Type'], members: 0,
+        owner: v['Owner'], created: new Date().toISOString().slice(0, 10) });
+      toast('Group created');
+      render();
+    }
   }));
 }

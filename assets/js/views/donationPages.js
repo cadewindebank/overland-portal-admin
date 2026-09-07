@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, modal, toast, deflist } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, modal, toast, deflist,
+         textField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function donationPages(view) {
+  const render = () => donationPages(view);
   const submitted = D.donationPages.filter(p => p.status === 'Submitted');
 
   view.innerHTML = `
@@ -28,6 +31,7 @@ export default function donationPages(view) {
               <div class="muted" style="font-size:12.5px">portal.overlandmissions.com/donate/${esc(p.slug)} · rep ${esc(p.repCode)}</div>
             </div>
             <div class="row" style="gap:8px">
+              <a class="btn-mini" href="#/people/${p.userId}">Owner</a>
               <button class="btn-mini" data-preview="${p.id}">Preview</button>
               <button class="btn-mini btn-mini--danger" data-recall="${p.id}">Recall</button>
               <button class="btn-mini btn-mini--go" data-publish="${p.id}">Publish</button>
@@ -57,8 +61,8 @@ export default function donationPages(view) {
     const rec = e.target.closest('[data-recall]');
     const prv = e.target.closest('[data-preview]');
     const opn = e.target.closest('[data-view]');
-    if (pub) return toast('Page published — now live');
-    if (rec) return toast('Page recalled to the owner with a note');
+    if (pub) { store.update('donationPages', pub.dataset.publish, { status: 'Live' }); toast('Page published — now live'); return render(); }
+    if (rec) { store.update('donationPages', rec.dataset.recall, { status: 'Recalled' }); toast('Page recalled to the owner'); return render(); }
     const p = D.donationPages.find(x => x.id === (prv?.dataset.preview || opn?.dataset.view));
     if (p) modal({
       title: p.display, confirm: p.status === 'Live' ? 'Recall page' : 'Publish page', cancel: 'Close',
@@ -71,18 +75,34 @@ export default function donationPages(view) {
         ['Raised', usd0(p.raised)],
         ['Last updated', shortDate(p.updated)]
       ]) + `<div class="hr"></div><div class="field"><label>Reviewer note</label><textarea placeholder="Sent to the page owner."></textarea></div>`,
-      onConfirm: () => toast(p.status === 'Live' ? 'Page recalled' : 'Page published')
+      onConfirm: () => {
+        store.update('donationPages', p.id, { status: p.status === 'Live' ? 'Recalled' : 'Live' });
+        toast(p.status === 'Live' ? 'Page recalled' : 'Page published');
+        render();
+      }
     });
   });
 
   view.querySelector('#newPage').addEventListener('click', () => modal({
     title: 'Create a donation page', confirm: 'Create page',
     body: `<div class="stack">
-      <div class="field"><label>Page owner</label><input list="ownerList" placeholder="Search staff"><datalist id="ownerList">${D.users.filter(u => u.type === 'Staff').slice(0, 40).map(u => `<option value="${esc(u.name)}">`).join('')}</datalist></div>
-      <div class="field"><label>Display name</label><input placeholder="Jane Mwansa | Field Staff"></div>
-      <div class="field"><label>Page slug</label><input placeholder="mwansajane"><div class="field__hint">portal.overlandmissions.com/donate/<strong>slug</strong></div></div>
-      <div class="field"><label>Rep code</label><input placeholder="V002410"></div>
+      ${textField('Page owner', { list: 'ownerList', placeholder: 'Search staff' })}
+      <datalist id="ownerList">${D.users.filter(u => u.type === 'Staff').slice(0, 40).map(u => `<option value="${esc(u.name)}">`).join('')}</datalist>
+      ${textField('Display name', { placeholder: 'Jane Mwansa | Field Staff' })}
+      ${textField('Page slug', { placeholder: 'mwansajane', hint: 'portal.overlandmissions.com/donate/<strong>slug</strong>' })}
+      ${textField('Rep code', { placeholder: 'V002410' })}
     </div>`,
-    onConfirm: () => toast('Donation page created as a draft')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Page owner', 'Display name', 'Page slug']);
+      if (v === false) return false;
+      const u = D.users.find(x => x.name === v['Page owner']);
+      store.create('donationPages', {
+        userId: u ? u.id : null, owner: v['Page owner'], slug: v['Page slug'],
+        display: v['Display name'], repCode: v['Rep code'] || 'V' + Math.floor(Math.random() * 9000 + 1000),
+        status: 'Draft', views: 0, raised: 0, updated: new Date().toISOString().slice(0, 10)
+      });
+      toast('Donation page created as a draft');
+      render();
+    }
   }));
 }

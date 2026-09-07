@@ -1,8 +1,12 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd, usd0, dateTime, stat, num, relative, toast, modal } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd, usd0, dateTime, stat, num, relative, toast, modal, readForm, textareaField, selectField } from '../ui.js';
+import * as store from '../store.js';
+import { APPROVAL_LIMIT, needsDualAuth } from '../policy.js';
+import { currentUser } from '../auth.js';
 
 export default function requests(view, { query }) {
+  const render = () => requests(view, { query });
   const typeFilter = query.get('type') || '';
   const statusFilter = query.get('status') || '';
   let rows = D.requests;
@@ -63,10 +67,9 @@ export default function requests(view, { query }) {
 
   const dt = new DataTable({
     title: 'Request queue', rows, pageSize: 25, sortKey: 'submitted', sortDir: 'desc',
+    selectable: true,
     onRowClick: r => { location.hash = '#/requests/' + r.id; },
     columns: [
-      { key: 'sel', label: '', sortable: false, filter: false,
-        render: r => `<input type="checkbox" data-sel="${r.id}" aria-label="Select ${r.id}">` },
       { key: 'id', label: 'ID', render: r => `<a href="#/requests/${r.id}">${r.id}</a>` },
       { key: 'typeLabel', label: 'Type' },
       { key: 'queue', label: 'Queue' },
@@ -80,31 +83,64 @@ export default function requests(view, { query }) {
     ]
   }).mount(view.querySelector('#reqTable'));
 
-  const selected = () => [...view.querySelectorAll('[data-sel]:checked')].map(i => i.dataset.sel);
+  const me = currentUser();
 
   view.querySelector('#approveAll').addEventListener('click', () => {
-    const s = selected();
+    const s = dt.selection();
     if (!s.length) return toast('Select one or more requests first');
+    const picked = s.map(id => D.findRequest(id)).filter(Boolean);
+    const total = D.sum(picked.filter(r => r.amount), r => r.amount);
+    const overLimit = picked.filter(r => r.amount && r.amount > APPROVAL_LIMIT[me.role]);
+    const dual = picked.filter(r => needsDualAuth(r.amount));
+
     modal({
-      title: `Approve ${s.length} request${s.length > 1 ? 's' : ''}`, confirm: 'Approve all',
-      body: `<p class="muted" style="margin-top:0">These requests will move to <strong>Approved</strong> and enter the next disbursement run.</p>
-        <ul style="margin:0;padding-left:18px">${s.map(id => {
-          const r = D.findRequest(id);
-          return `<li>${esc(r.id)} — ${esc(r.summary)}${r.amount ? ` (${usd(r.amount)})` : ''}</li>`;
-        }).join('')}</ul>
+      title: `Approve ${picked.length} request${picked.length > 1 ? 's' : ''}`,
+      confirm: overLimit.length ? 'Approve what I can' : 'Approve all',
+      body: `<p style="margin-top:0">Total <strong>${usd(total)}</strong> across ${picked.length} requests.</p>
+        ${overLimit.length ? `<div class="notice notice--warn">
+          ${overLimit.length} request${overLimit.length > 1 ? 's exceed' : ' exceeds'} your approval limit of
+          ${usd0(APPROVAL_LIMIT[me.role])} and will be left for a higher approver.</div>` : ''}
+        ${dual.length ? `<div class="notice notice--warn">
+          ${dual.length} request${dual.length > 1 ? 's need' : ' needs'} a second authoriser and will move to
+          <strong>Awaiting 2nd approval</strong> rather than Approved.</div>` : ''}
+        <ul style="margin:12px 0 0;padding-left:18px;max-height:190px;overflow:auto">${picked.map(r =>
+          `<li>${esc(r.id)} — ${esc(r.summary)}${r.amount ? ` (${usd(r.amount)})` : ''}</li>`).join('')}</ul>
         <div class="hr"></div>
-        <div class="field"><label>Approval note</label><textarea placeholder="Recorded on each request and visible to the requester."></textarea></div>`,
-      onConfirm: () => toast(`${s.length} requests approved`)
+        ${textareaField('Approval note', { placeholder: 'Recorded on each request and visible to the requester.' })}`,
+      onConfirm: scrim => {
+        const note = readForm(scrim)['Approval note'] || '';
+        let approved = 0, held = 0, pending2 = 0;
+        picked.forEach(r => {
+          if (r.amount && r.amount > APPROVAL_LIMIT[me.role]) { held++; return; }
+          const next = needsDualAuth(r.amount) ? 'Awaiting 2nd approval' : 'Approved';
+          if (next === 'Approved') approved++; else pending2++;
+          store.update('requests', r.id, {
+            status: next,
+            approvedBy: me.name,
+            thread: [...r.thread, { who: me.name, when: new Date().toISOString().slice(0, 16).replace('T', ' '),
+              text: note || `Approved in a batch of ${picked.length}.` }]
+          });
+        });
+        dt.clearSelection();
+        render();
+        toast(`${approved} approved${pending2 ? `, ${pending2} awaiting a 2nd approver` : ''}${held ? `, ${held} over your limit` : ''}`);
+      }
     });
   });
+
   view.querySelector('#bulkAssign').addEventListener('click', () => {
-    const s = selected();
+    const s = dt.selection();
     if (!s.length) return toast('Select one or more requests first');
     modal({
       title: `Assign ${s.length} request${s.length > 1 ? 's' : ''}`, confirm: 'Assign',
-      body: `<div class="field"><label>Assign to</label><select>${D.users.slice(0, 20).map(u => `<option>${esc(u.name)}</option>`).join('')}</select></div>`,
-      onConfirm: () => toast(`${s.length} requests assigned`)
+      body: selectField('Assign to', D.users.slice(0, 20).map(u => u.name)),
+      onConfirm: scrim => {
+        const who = readForm(scrim)['Assign to'];
+        store.updateMany('requests', s, { assignee: who });
+        dt.clearSelection();
+        render();
+        toast(`${s.length} requests assigned to ${who}`);
+      }
     });
   });
-  void dt;
 }

@@ -633,6 +633,13 @@ table.dt__table td.center, table.dt__table th.center { text-align: center; }
 .deflist dt, .deflist .dk { font-weight: 400; color: var(--text); margin: 0; min-width: 0; }
 .deflist dd, .deflist .dv { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+.field__error { color: #a32718; font-size: 12px; font-weight: 500; }
+.notice { padding: 11px 13px; border-radius: 3px; font-size: 13px; margin-bottom: 12px; border: 1px solid; }
+.notice--warn { background: #fdf3e9; border-color: #e6c39a; color: #7d4a12; }
+.notice--stop { background: #fbeeec; border-color: #eec5be; color: #8c2114; }
+.notice--go   { background: #eef6f3; border-color: #b4d3c8; color: #08533f; }
+.field input[aria-invalid], .field select[aria-invalid], .field textarea[aria-invalid] { border-color: #a32718; }
+table.dt__table th.dt__sel, table.dt__table td.dt__sel { width: 34px; text-align: center; padding-left: 12px; padding-right: 4px; }
 
 /* ==========================================================================
    Forms

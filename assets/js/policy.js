@@ -55,6 +55,13 @@ export const ROLE_GRANTS = {
 
 export const ROLES = Object.keys(ROLE_GRANTS);
 
+/* Least privilege first. Account-creation forms bind to this order so the
+   default selection is the safest one, never Administrator. */
+export const ROLES_BY_PRIVILEGE = [
+  'Read Only', 'Staff', 'Media', 'Expedition Leader',
+  'Donor Relations', 'Base Director', 'Finance', 'Administrator'
+];
+
 /** Capability required to open each route id. Routes absent here are open to any signed-in user. */
 export const ROUTE_CAPABILITY = {
   people: 'people.view',
@@ -82,3 +89,25 @@ export const ROUTE_CAPABILITY = {
   security: 'system.sessions',
   settings: 'system.settings'
 };
+
+/* ==========================================================================
+   Financial controls
+   ==========================================================================
+   Per-role single-approval ceiling, and the threshold above which a second
+   authoriser is required. Mirror these on the server — the client copy only
+   shapes the UI.
+   ========================================================================== */
+export const APPROVAL_LIMIT = {
+  'Administrator': Infinity,
+  'Finance': 25000,
+  'Base Director': 5000,
+  'Expedition Leader': 1000,
+  'Donor Relations': 0,
+  'Media': 0,
+  'Staff': 0,
+  'Read Only': 0
+};
+
+/** Amounts at or above this need two different approvers. */
+export const DUAL_AUTH_THRESHOLD = 10000;
+export const needsDualAuth = amount => (amount || 0) >= DUAL_AUTH_THRESHOLD;

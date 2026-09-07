@@ -39,14 +39,18 @@ export default function donations(view) {
 
   const dt = new DataTable({
     title: 'Incoming funds', rows: D.donations, pageSize: 25, sortKey: 'date', sortDir: 'desc',
+    onRowClick: d => { location.hash = '#/donations/' + d.id; },
     columns: [
-      { key: 'date', label: 'Transaction date', render: d => shortDate(d.date) },
+      { key: 'date', label: 'Transaction date', render: d => `<a href="#/donations/${d.id}">${shortDate(d.date)}</a>` },
       { key: 'amount', label: 'Amount', className: 'num', render: d => usd(d.amount) },
       { key: 'type', label: 'Type' },
       { key: 'fund', label: 'Fund' },
       { key: 'method', label: 'Method' },
       { key: 'repCode', label: 'Rep' },
-      { key: 'donor', label: 'Donor', render: d => `<a class="rowlink" href="#/people/${d.donorId}">${esc(d.donor)}</a>` },
+      { key: 'donor', label: 'Donor', render: d => {
+          const c = D.contacts.find(x => x.name === d.donor);
+          return `<a class="rowlink" href="${c ? '#/crm/' + c.id : '#/people/' + d.donorId}">${esc(d.donor)}</a>`;
+        } },
       { key: 'designation', label: 'Designation' },
       { key: 'recurring', label: 'Recurring', className: 'center', value: d => d.recurring ? 'Yes' : 'No', render: d => d.recurring ? badge('Active') : '—' },
       { key: 'receipted', label: 'Receipt', className: 'center', value: d => d.receipted ? 'Sent' : 'Pending', render: d => badge(d.receipted ? 'Sent' : 'Pending') },

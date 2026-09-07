@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, deflist, badge, esc, avatar, usd, usd0, shortDate, dateTime, DataTable, progress, modal, toast, num } from '../ui.js';
+import { pageHead, card, deflist, badge, esc, avatar, usd, usd0, shortDate, dateTime, DataTable, progress, modal, toast, num, readForm, requireFields, selectField, textField } from '../ui.js';
+import * as store from '../store.js';
+import { ROLES_BY_PRIVILEGE } from '../policy.js';
 
 export default function person(view, { params }) {
+  const render = () => person(view, { params });
   const u = D.findUser(params[0]);
   if (!u) { view.innerHTML = `<div class="card">${esc('No such person: ' + params[0])}</div>`; return; }
 
@@ -10,6 +13,9 @@ export default function person(view, { params }) {
   const reqs = D.userRequests(u.id);
   const exps = D.userExpeditions(u.id);
   const page = D.donationPages.find(p => p.userId === u.id);
+  const mpd = D.mpders.find(m => m.userId === u.id);
+  const owned = D.contacts.filter(c => c.owner === u.name);
+  const supporters = D.donations.filter(d => d.designation === u.name);
 
   view.innerHTML = `
     ${pageHead({
@@ -63,6 +69,31 @@ export default function person(view, { params }) {
             <button class="btn-mini" id="reqDocs">${icon('bell')} Request missing documents</button>
           </div>`, { title: 'Compliance', icon: 'shield' })}
 
+        ${mpd ? card(`
+          ${deflist([
+            ['Coach', esc(mpd.coach)],
+            ['Phase', badge(mpd.phase, mpd.phase === 'At Risk' ? 'denied' : mpd.phase === 'Fully Funded' ? 'approved' : 'review')],
+            ['Monthly goal', usd0(mpd.monthlyGoal)],
+            ['Raised', `${usd0(mpd.monthlyRaised)} (${mpd.pct}%)`],
+            ['Partners', String(mpd.partners)],
+            ['Lapsed partners', String(mpd.lapsedPartners)]
+          ])}
+          ${progress(Math.min(100, mpd.pct), mpd.pct >= 100)}
+          <a class="btn-mini w-100" style="margin-top:12px;justify-content:center" href="#/mpd">Open MPD</a>`,
+          { title: 'MPD', icon: 'dollar' }) : ''}
+
+        ${owned.length ? card(`
+          <p class="muted" style="margin-top:0;font-size:12.5px">${owned.length} CRM contacts are owned by ${esc(u.first)}.</p>
+          <ul class="timeline">
+            ${owned.slice(0, 6).map(c => `<li>
+              <div class="timeline__body"><a href="#/crm/${c.id}">${esc(c.name)}</a>
+                <div class="muted" style="font-size:12px">${esc(c.bucket)} · ${esc(c.stage)}</div></div>
+              <span class="timeline__when">${c.lifetime ? usd0(c.lifetime) : '—'}</span></li>`).join('')}
+          </ul>
+          <a class="btn-mini w-100" style="margin-top:10px;justify-content:center"
+             href="#/crm?owner=${encodeURIComponent(u.name)}">All ${owned.length} contacts</a>`,
+          { title: 'Contacts owned', icon: 'people' }) : ''}
+
         ${page ? card(`
           ${deflist([
             ['Status', badge(page.status)],
@@ -107,10 +138,27 @@ export default function person(view, { params }) {
         </div>`, { title: null });
     },
     Giving: () => {
-      body.innerHTML = card('<div id="giftTable"></div>', {
-        title: `Giving history — ${usd0(D.sum(gifts, g => g.amount))} across ${gifts.length} gifts`,
-        icon: 'give'
-      });
+      body.innerHTML = `
+        ${supporters.length ? card('<div id="suppTable"></div>', {
+          title: `Support received — ${usd0(D.sum(supporters, g => g.amount))} from ${new Set(supporters.map(g => g.donor)).size} partners`,
+          icon: 'give' }) : ''}
+        ${card('<div id="giftTable"></div>', {
+          title: `Gifts given — ${usd0(D.sum(gifts, g => g.amount))} across ${gifts.length}`,
+          icon: 'history' })}`;
+      if (supporters.length) new DataTable({
+        hideTitle: true, title: `${u.name} — support received`, rows: supporters,
+        pageSize: 8, columnFilters: false, sortKey: 'date', sortDir: 'desc',
+        onRowClick: g => { location.hash = '#/donations/' + g.id; },
+        columns: [
+          { key: 'date', label: 'Date', render: g => `<a href="#/donations/${g.id}">${shortDate(g.date)}</a>` },
+          { key: 'amount', label: 'Amount', className: 'num', render: g => usd(g.amount) },
+          { key: 'donor', label: 'Partner', render: g => {
+              const c = D.contacts.find(x => x.name === g.donor);
+              return c ? `<a href="#/crm/${c.id}">${esc(g.donor)}</a>` : esc(g.donor); } },
+          { key: 'recurring', label: 'Recurring', render: g => g.recurring ? badge('Active') : '—' },
+          { key: 'memo', label: 'Memo' }
+        ]
+      }).mount(body.querySelector('#suppTable'));
       new DataTable({
         hideTitle: true, title: `${u.name} — giving`, rows: gifts, pageSize: 10, columnFilters: false, sortKey: 'date', sortDir: 'desc',
         columns: [
@@ -187,15 +235,22 @@ export default function person(view, { params }) {
           <button class="btn-mini" id="forceReset">Force password reset</button>
         </div>`, { title: 'Access & security', icon: 'shield' });
 
-      body.addEventListener('click', e => {
-        if (e.target.closest('[data-revoke]')) toast('Session revoked');
-        if (e.target.id === 'suspend') toast(`${u.name} suspended`);
-        if (e.target.id === 'forceReset') toast('Password reset email sent');
-      });
+
     }
   };
 
   tabs.Overview();
+  // one delegated listener on the tab body, not one per tab render
+  body.addEventListener('click', e => {
+    const rev = e.target.closest('[data-revoke]');
+    if (rev) { store.remove('sessions', rev.dataset.revoke); toast('Session revoked'); return tabs.Access(); }
+    if (e.target.id === 'suspend') {
+      store.update('users', u.id, { status: u.status === 'Suspended' ? 'Active' : 'Suspended' });
+      toast(`${u.name} ${u.status === 'Suspended' ? 'reinstated' : 'suspended'}`);
+      return render();
+    }
+    if (e.target.id === 'forceReset') { toast('Password reset email sent to ' + u.email); }
+  });
   view.querySelector('#tabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]');
     if (!b) return;
@@ -206,19 +261,31 @@ export default function person(view, { params }) {
   view.querySelector('#editBtn').addEventListener('click', () => modal({
     title: 'Edit ' + u.name, confirm: 'Save changes', wide: true,
     body: `<div class="form-grid">
-      <div class="field"><label>First name</label><input value="${esc(u.first)}"></div>
-      <div class="field"><label>Last name</label><input value="${esc(u.last)}"></div>
-      <div class="field"><label>Username</label><input value="${esc(u.username)}"></div>
-      <div class="field span-2"><label>Email</label><input value="${esc(u.email)}"></div>
-      <div class="field"><label>Phone</label><input value="${esc(u.phone)}"></div>
-      <div class="field"><label>City</label><input value="${esc(u.city)}"></div>
-      <div class="field"><label>State/Region</label><input value="${esc(u.region)}"></div>
-      <div class="field"><label>Country</label><input value="${esc(u.country)}"></div>
-      <div class="field"><label>Department</label><input value="${esc(u.department)}"></div>
-      <div class="field"><label>Base</label><input value="${esc(u.base)}"></div>
-      <div class="field"><label>Portal role</label><select>${['Read Only','Staff','Expedition Leader','Finance','Base Director','Media','Donor Relations','Administrator'].map(r => `<option${r === u.role ? ' selected' : ''}>${r}</option>`).join('')}</select></div>
+      ${textField('First name', { value: u.first })}
+      ${textField('Last name', { value: u.last })}
+      ${textField('Username', { value: u.username })}
+      ${textField('Email', { value: u.email, type: 'email', span: 2 })}
+      ${textField('Phone', { value: u.phone })}
+      ${textField('City', { value: u.city })}
+      ${textField('State/Region', { value: u.region })}
+      ${textField('Country', { value: u.country })}
+      ${textField('Department', { value: u.department })}
+      ${textField('Base', { value: u.base })}
+      ${selectField('Portal role', ROLES_BY_PRIVILEGE, { value: u.role })}
     </div>`,
-    onConfirm: () => toast('Record updated')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['First name', 'Last name', 'Email']);
+      if (v === false) return false;
+      store.update('users', u.id, {
+        first: v['First name'], last: v['Last name'],
+        name: `${v['First name']} ${v['Last name']}`,
+        username: v['Username'], email: v['Email'], phone: v['Phone'],
+        city: v['City'], region: v['State/Region'], country: v['Country'],
+        department: v['Department'], base: v['Base'], role: v['Portal role']
+      });
+      toast('Record updated');
+      render();
+    }
   }));
   view.querySelector('#resetPw').addEventListener('click', () => toast('Password reset email sent to ' + u.email));
   view.querySelector('#impersonate').addEventListener('click', () => toast('Read-only impersonation session started (logged to audit)'));

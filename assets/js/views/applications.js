@@ -1,8 +1,10 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
 import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, modal, toast, deflist, shortDate } from '../ui.js';
+import * as store from '../store.js';
 
-export default function applications(view) {
+export default function applications(view, { query } = {}) {
+  const render = () => applications(view, { query });
   const open = D.openApplications();
 
   view.innerHTML = `
@@ -42,12 +44,14 @@ export default function applications(view) {
         { key: 'act', label: '', sortable: false, filter: false, render: a => `<button class="btn-mini" data-open="${a.id}">Review</button>` }
       ]
     }).mount(view.querySelector('#appTable'));
-    view.querySelector('#appTable').addEventListener('click', ev => {
-      const b = ev.target.closest('[data-open]');
-      if (b) openApp(D.applications.find(x => x.id === b.dataset.open));
-    });
   };
   build(open);
+  // bound ONCE on the persistent host — rebinding per tab switch stacked
+  // listeners and opened one modal per switch
+  view.querySelector('#appTable').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-open]');
+    if (b) openApp(D.applications.find(x => x.id === b.dataset.open));
+  });
 
   view.querySelector('#tabs').addEventListener('click', ev => {
     const b = ev.target.closest('[data-tab]');
@@ -88,10 +92,53 @@ export default function applications(view) {
           <button class="btn-mini" data-set="Waitlisted">Waitlist</button>
           <button class="btn-mini btn-mini--danger" data-set="Declined">Decline</button>
         </div>`,
-      onConfirm: () => toast(`${a.name} accepted onto ${a.expedition}`)
+      onConfirm: () => acceptOntoRoster(a)
     }).addEventListener('click', ev => {
       const b = ev.target.closest('[data-set]');
-      if (b) { toast(`${a.name} moved to “${b.dataset.set}”`); ev.currentTarget.remove(); }
+      if (b) {
+        store.update('applications', a.id, { status: b.dataset.set });
+        toast(`${a.name} moved to \u201c${b.dataset.set}\u201d`);
+        ev.currentTarget.remove();
+        render();
+      }
     });
+  }
+
+  /* Accepting used to be a toast. It now actually puts the person on the
+     roster, which is the whole point of the review. */
+  function acceptOntoRoster(a) {
+    const e = D.findExpedition(a.expeditionId);
+    if (!e) { toast('That expedition no longer exists'); return; }
+    if (e.roster.some(m => m.userId === a.userId)) {
+      store.update('applications', a.id, { status: 'Accepted' });
+      toast(`${a.name} is already on the roster`);
+      return render();
+    }
+    if (e.roster.length >= e.capacity) {
+      store.update('applications', a.id, { status: 'Waitlisted' });
+      toast(`${e.name} is full — ${a.name} was waitlisted instead`);
+      return render();
+    }
+    const u = D.findUser(a.userId);
+    const roster = [...e.roster, {
+      userId: a.userId, name: a.name,
+      city: u ? u.city : '—', region: u ? u.region : '—',
+      role: 'Team Member', raised: 0, pct: 0,
+      passport: !!(u && u.passportExpiry), flight: false,
+      insurance: !!(u && u.insurance === 'Current'), forms: false
+    }];
+    const goal = e.cost * roster.length;
+    const raised = roster.reduce((s2, m) => s2 + m.raised, 0);
+    store.update('expeditions', e.id, {
+      roster, goal, raised, pct: goal ? Math.round((raised / goal) * 100) : 0
+    });
+    store.update('applications', a.id, { status: 'Accepted' });
+    store.create('tasks', {
+      title: `Collect deposit and documents from ${a.name}`,
+      assignee: e.leader, related: e.name,
+      due: e.start, overdue: false, priority: 'High', status: 'Open'
+    });
+    toast(`${a.name} added to ${e.name} — a follow-up task was created`);
+    render();
   }
 }

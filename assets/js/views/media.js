@@ -3,11 +3,11 @@ import { icon } from '../icons.js';
 import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast } from '../ui.js';
 
 const GUIDES = [
-  ['Brand Guide', 'Logos, colour, type and how the Overland mark may be used.', 'image'],
-  ['Writing Guide', 'Voice, tone, terminology and the words we use for our work.', 'file'],
-  ['Media Resources', 'Downloadable photography, video and templates for teams.', 'download'],
-  ['Email Signature', 'Generate a signature block that matches the brand.', 'edit'],
-  ['Cybersecurity Policy', 'Policies, tips and how-to guides for staff devices.', 'shield']
+  ['Brand Guide', 'Logos, colour, type and how the Overland mark may be used.', 'image', '#/media?collection=Brand%20Guide'],
+  ['Writing Guide', 'Voice, tone, terminology and the words we use for our work.', 'file', '#/media?collection=Writing%20Guide'],
+  ['Media Resources', 'Downloadable photography, video and templates for teams.', 'download', '#/media?collection=Expedition%20Media'],
+  ['Email Signature', 'Generate a signature block that matches the brand.', 'edit', '#/settings'],
+  ['Cybersecurity Policy', 'Policies, tips and how-to guides for staff devices.', 'shield', '#/security']
 ];
 
 export default function media(view) {
@@ -20,8 +20,8 @@ export default function media(view) {
     })}
 
     <div class="grid grid--5" style="margin-bottom:18px">
-      ${GUIDES.map(([t, d, ic]) => `
-        <a class="card" href="#/media" style="text-decoration:none;color:inherit">
+      ${GUIDES.map(([t, d, ic, href]) => `
+        <a class="card" href="${href}" style="text-decoration:none;color:inherit">
           <span style="color:var(--flare);display:inline-flex">${icon(ic)}</span>
           <h3 style="margin:8px 0 4px;font-size:15px">${esc(t)}</h3>
           <p class="muted" style="margin:0;font-size:12.5px">${esc(d)}</p>

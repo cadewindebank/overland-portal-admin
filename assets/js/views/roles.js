@@ -1,6 +1,7 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, avatar, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, avatar, num, modal, toast,
+         textField, selectField, textareaField, requireFields } from '../ui.js';
 
 import { CAPABILITIES, ROLE_GRANTS, ROLES } from '../policy.js';
 
@@ -34,7 +35,7 @@ export default function roles(view) {
                   <th scope="row" style="text-align:left;font-weight:400">${esc(c.label)}
                     <code class="muted" style="font-size:11px;display:block">${esc(c.id)}</code></th>
                   ${roleNames.map(r => `
-                  <td class="center"><input type="checkbox" ${ROLE_GRANTS[r](c.id) ? 'checked' : ''} aria-label="${esc(r)} may ${esc(c.label)}"></td>`).join('')}</tr>`).join('')}
+                  <td class="center"><input type="checkbox" data-role="${esc(r)}" data-grant="${esc(c.id)}" ${ROLE_GRANTS[r](c.id) ? 'checked' : ''} aria-label="${esc(r)} may ${esc(c.label)}"></td>`).join('')}</tr>`).join('')}
               `).join('')}
             </tbody>
           </table>
@@ -63,14 +64,44 @@ export default function roles(view) {
     ]
   }).mount(view.querySelector('#adminTable'));
 
-  view.querySelector('#saveRoles').addEventListener('click', () => toast('Permission matrix saved — 0 users affected immediately'));
+  view.querySelector('#saveRoles').addEventListener('click', () => {
+    // Read every checkbox back into ROLE_GRANTS so the router enforces exactly
+    // what the administrator sees.
+    const grants = {};
+    roleNames.forEach(r => (grants[r] = new Set()));
+    view.querySelectorAll('[data-grant]').forEach(box => {
+      if (box.checked) grants[box.dataset.role].add(box.dataset.grant);
+    });
+    let changed = 0;
+    roleNames.forEach(r => {
+      CAPABILITIES.forEach(c => {
+        const was = ROLE_GRANTS[r](c.id);
+        const now = grants[r].has(c.id);
+        if (was !== now) changed++;
+      });
+      ROLE_GRANTS[r] = id => grants[r].has(id);
+    });
+    const affected = D.users.filter(u => roleNames.includes(u.role)).length;
+    toast(changed
+      ? `${changed} grant${changed > 1 ? 's' : ''} changed — ${affected} accounts re-evaluated`
+      : 'No changes to save');
+    if (changed) location.hash = location.hash;   // re-run the guard on this view
+  });
   view.querySelector('#newRole').addEventListener('click', () => modal({
     title: 'Create a role', confirm: 'Create role',
     body: `<div class="stack">
-      <div class="field"><label>Role name</label><input placeholder="e.g. Regional Finance"></div>
-      <div class="field"><label>Copy permissions from</label><select>${roleNames.map(r => `<option>${r}</option>`).join('')}</select></div>
-      <div class="field"><label>Description</label><textarea placeholder="Who this role is for and what it should be able to do."></textarea></div>
+      ${textField('Role name', { placeholder: 'e.g. Regional Finance' })}
+      ${selectField('Copy permissions from', roleNames)}
+      ${textareaField('Description', { placeholder: 'Who this role is for and what it should be able to do.' })}
     </div>`,
-    onConfirm: () => toast('Role created')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Role name']);
+      if (v === false) return false;
+      const base = ROLE_GRANTS[v['Copy permissions from']] || (() => false);
+      ROLE_GRANTS[v['Role name']] = id => base(id);
+      ROLES.push(v['Role name']);
+      toast(`Role “${v['Role name']}” created`);
+      location.hash = location.hash;
+    }
   }));
 }

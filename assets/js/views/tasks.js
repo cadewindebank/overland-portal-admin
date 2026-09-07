@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast,
+         textField, selectField, textareaField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function tasks(view) {
+  const render = () => tasks(view);
   const open = D.openTasks();
   const overdue = open.filter(t => t.overdue);
   const mine = D.tasks.filter(t => t.assignee === D.me.name);
@@ -41,7 +44,10 @@ export default function tasks(view) {
     columns: [
       { key: 'title', label: 'Task' },
       { key: 'assignee', label: 'Assignee' },
-      { key: 'related', label: 'Related to' },
+      { key: 'related', label: 'Related to', render: t => {
+          const e = D.expeditions.find(x => x.name === t.related);
+          return e ? `<a href="#/expeditions/${e.id}">${esc(t.related)}</a>` : esc(t.related);
+        } },
       { key: 'due', label: 'Due', render: t => `<span style="color:${t.overdue && t.status !== 'Done' ? '#a32718' : 'inherit'}">${shortDate(t.due)}</span>` },
       { key: 'priority', label: 'Priority', render: t => t.priority === 'Urgent' ? badge('Urgent') : esc(t.priority) },
       { key: 'status', label: 'Status', render: t => badge(t.status) },
@@ -58,19 +64,31 @@ export default function tasks(view) {
     build(b.dataset.tab === 'Open' ? open : b.dataset.tab === 'All' ? D.tasks : mine);
   });
   view.querySelector('#taskTable').addEventListener('click', e => {
-    if (e.target.closest('[data-done]')) toast('Task marked complete');
+    const d = e.target.closest('[data-done]');
+    if (d) { store.update('tasks', d.dataset.done, { status: 'Done' }); toast('Task marked complete'); render(); }
   });
   view.querySelector('#newTask').addEventListener('click', () => modal({
     title: 'Assign a task', confirm: 'Assign task',
     body: `<div class="stack">
-      <div class="field"><label>Task</label><input placeholder="Verify passport scan for the May team"></div>
-      <div class="field"><label>Assign to</label><select>${D.users.slice(0, 25).map(u => `<option>${esc(u.name)}</option>`).join('')}</select></div>
+      ${textField('Task', { placeholder: 'Verify passport scan for the May team' })}
+      ${selectField('Assign to', D.users.slice(0, 25).map(u => u.name))}
+      ${textField('Related to', { placeholder: 'Expedition, department or record' })}
       <div class="form-grid form-grid--2">
-        <div class="field"><label>Due date</label><input type="date"></div>
-        <div class="field"><label>Priority</label><select><option>Normal</option><option>High</option><option>Urgent</option></select></div>
+        ${textField('Due date', { type: 'date' })}
+        ${selectField('Priority', ['Normal', 'High', 'Urgent'])}
       </div>
-      <div class="field"><label>Notes</label><textarea placeholder="Context the assignee needs."></textarea></div>
+      ${textareaField('Notes', { placeholder: 'Context the assignee needs.' })}
     </div>`,
-    onConfirm: () => toast('Task assigned')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Task', 'Due date']);
+      if (v === false) return false;
+      store.create('tasks', {
+        title: v['Task'], assignee: v['Assign to'], related: v['Related to'] || 'General',
+        due: v['Due date'], overdue: v['Due date'] < '2026-09-07',
+        priority: v['Priority'], status: 'Open', notes: v['Notes'] || ''
+      });
+      toast('Task assigned to ' + v['Assign to']);
+      render();
+    }
   }));
 }

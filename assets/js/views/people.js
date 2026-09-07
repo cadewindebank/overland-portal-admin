@@ -1,8 +1,12 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, avatar, usd0, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, avatar, usd0, shortDate, stat, num, modal, toast,
+         textField, selectField, textareaField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
+import { ROLES_BY_PRIVILEGE } from '../policy.js';
 
 export default function people(view) {
+  const render = () => people(view);
   view.innerHTML = `
     ${pageHead({
       title: 'People',
@@ -71,13 +75,52 @@ export default function people(view) {
     title: 'Invite a person',
     confirm: 'Send invite',
     body: `<div class="form-grid form-grid--2">
-      <div class="field"><label>First name</label><input type="text" placeholder="Jane"></div>
-      <div class="field"><label>Last name</label><input type="text" placeholder="Mwansa"></div>
-      <div class="field span-2"><label>Email</label><input type="email" placeholder="name@example.org"></div>
-      <div class="field"><label>Account type</label><select><option>Staff</option><option>Expedition Member</option><option>Donor</option></select></div>
-      <div class="field"><label>Portal role</label><select>${['Read Only','Staff','Expedition Leader','Finance','Base Director','Media','Donor Relations','Administrator'].map(r => `<option>${r}</option>`).join('')}</select></div>
-      <div class="field span-2"><label>Note to include</label><textarea placeholder="Optional message included in the invitation email."></textarea></div>
+      ${textField('First name', { placeholder: 'Jane' })}
+      ${textField('Last name', { placeholder: 'Mwansa' })}
+      ${textField('Email', { type: 'email', placeholder: 'name@example.org', span: 2 })}
+      ${selectField('Account type', ['Staff', 'Expedition Member', 'Donor'])}
+      ${selectField('Portal role', ROLES_BY_PRIVILEGE)}
+      ${textareaField('Note to include', { placeholder: 'Optional message included in the invitation email.', span: 2 })}
     </div>`,
-    onConfirm: () => toast('Invitation queued for delivery')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['First name', 'Last name', 'Email']);
+      if (v === false) return false;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v['Email'])) {
+        return invalidEmail(scrim);
+      }
+      if (D.users.some(u => u.email.toLowerCase() === v['Email'].toLowerCase())) {
+        return duplicate(scrim);
+      }
+      const row = store.create('users', {
+        first: v['First name'], last: v['Last name'],
+        name: `${v['First name']} ${v['Last name']}`,
+        username: (v['Last name'] + v['First name'][0]).toLowerCase(),
+        email: v['Email'], phone: '',
+        city: '—', region: '—', country: '—',
+        type: v['Account type'],
+        department: v['Account type'] === 'Staff' ? 'Unassigned' : '—',
+        base: '—', role: v['Portal role'], sector: 'Global',
+        status: 'Invited', twoFactor: false, passportExpiry: null,
+        insurance: 'Missing', balance: 0,
+        lastLogin: '', joined: new Date().toISOString().slice(0, 10),
+        onboarding: { invited: true }
+      });
+      toast(`Invitation sent to ${row.email}`);
+      location.hash = '#/people/' + row.id;
+    }
   }));
+
+  function invalidEmail(scrim) {
+    const host = scrim.querySelector('.modal__body');
+    if (!host.querySelector('.notice--stop'))
+      host.insertAdjacentHTML('afterbegin', '<div class="notice notice--stop">That email address is not valid.</div>');
+    return false;
+  }
+  function duplicate(scrim) {
+    const host = scrim.querySelector('.modal__body');
+    if (!host.querySelector('.notice--stop'))
+      host.insertAdjacentHTML('afterbegin', '<div class="notice notice--stop">Someone already has that email address.</div>');
+    return false;
+  }
+  void render;
 }

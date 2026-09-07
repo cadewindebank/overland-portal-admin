@@ -168,6 +168,20 @@ export function tabs(names, onSelect, initial) {
 }
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
+/* Tabs that write the selection into the URL, so Back, refresh, bookmarking
+   and deep links all land on the right panel. */
+export function tabsUrl(names, onSelect, initial, param = 'tab') {
+  const t = tabs(names, name => {
+    const [path, qs] = (location.hash || '#/').slice(1).split('?');
+    const q = new URLSearchParams(qs || '');
+    q.set(param, name);
+    const next = `#${path}?${q}`;
+    if (next !== location.hash) history.replaceState(null, '', next);
+    onSelect(name);
+  }, initial);
+  return t;
+}
+
 /* --- hero band ------------------------------------------------------------- */
 export const hero = ({ title, sub, actions, art }) => `
   <section class="hero"${art ? ` style="--hero-art:${art}"` : ''}>
@@ -204,6 +218,51 @@ export function toast(message) {
   el.textContent = message;
   host.appendChild(el);
   setTimeout(() => el.remove(), 4000);
+}
+
+/* --- reading a modal's fields ---------------------------------------------
+   onConfirm receives the scrim; readForm() turns its controls into an object
+   keyed by the visible label, so a caller can persist what the user typed.
+   -------------------------------------------------------------------------- */
+export function readForm(scrim) {
+  const out = {};
+  scrim.querySelectorAll('input, select, textarea').forEach(el => {
+    if (el.type === 'button' || el.type === 'submit') return;
+    const label = el.labels && el.labels[0]
+      ? el.labels[0].textContent.trim()
+      : (el.getAttribute('aria-label') || el.placeholder || el.id || '');
+    if (!label) return;
+    out[label] = el.type === 'checkbox' ? el.checked : el.value.trim();
+  });
+  return out;
+}
+
+/** Mark a field invalid inside a modal and focus the first offender. */
+export function invalid(scrim, labels, message) {
+  scrim.querySelectorAll('.field__error').forEach(n => n.remove());
+  scrim.querySelectorAll('[aria-invalid]').forEach(n => n.removeAttribute('aria-invalid'));
+  let first = null;
+  [].concat(labels).forEach(l => {
+    const el = [...scrim.querySelectorAll('input, select, textarea')].find(x =>
+      (x.labels && x.labels[0] && x.labels[0].textContent.trim() === l));
+    if (!el) return;
+    el.setAttribute('aria-invalid', 'true');
+    const msg = document.createElement('div');
+    msg.className = 'field__error';
+    msg.textContent = message || 'This field is required';
+    el.insertAdjacentElement('afterend', msg);
+    if (!first) first = el;
+  });
+  if (first) first.focus();
+  return false;
+}
+
+/** Require the named labels to be non-empty. Returns values, or false. */
+export function requireFields(scrim, labels) {
+  const v = readForm(scrim);
+  const missing = labels.filter(l => !v[l]);
+  if (missing.length) return invalid(scrim, missing);
+  return v;
 }
 
 /* --- modal ----------------------------------------------------------------- */
@@ -281,6 +340,9 @@ export class DataTable {
   constructor(opts) {
     this.o = Object.assign({ pageSize: 10, columnFilters: true, sortable: true }, opts);
     this.id = 'dt' + (++dtSeq);
+    /* Selection is held here, not in the DOM, so sorting, paging, filtering
+       and searching no longer silently discard the user's picks. */
+    this.selected = new Set();
     this.page = 1;
     this.size = this.o.pageSize;
     this.q = '';
@@ -299,6 +361,25 @@ export class DataTable {
     const v = this.cellValue(col, row);
     return esc(v);
   }
+
+  /* --- selection --------------------------------------------------------- */
+  isSelected(id) { return this.selected.has(String(id)); }
+  toggle(id, on) {
+    const k = String(id);
+    if (on === undefined) on = !this.selected.has(k);
+    if (on) this.selected.add(k); else this.selected.delete(k);
+    if (this.o.onSelectionChange) this.o.onSelectionChange([...this.selected]);
+  }
+  /** Every row matching the current filters — not merely the visible page. */
+  selectableIds() { return this.sorted(this.filtered()).map(r => String(r.id)); }
+  selectAll(on) {
+    const ids = this.selectableIds();
+    if (on) ids.forEach(i => this.selected.add(i));
+    else ids.forEach(i => this.selected.delete(i));
+    if (this.o.onSelectionChange) this.o.onSelectionChange([...this.selected]);
+  }
+  selection() { return [...this.selected]; }
+  clearSelection() { this.selected.clear(); this.paint(); }
 
   filtered() {
     const q = this.q.trim().toLowerCase();
@@ -337,7 +418,12 @@ export class DataTable {
     if (this.page > pages) this.page = pages;
     const start = (this.page - 1) * this.size;
     const rows = all.slice(start, start + this.size);
-    const cols = this.o.columns;
+    const cols = this.o.selectable
+      ? [{ key: '__sel', label: '', sortable: false, filter: false, className: 'dt__sel',
+           render: r => `<input type="checkbox" data-sel="${esc(r.id)}"${
+             this.isSelected(r.id) ? ' checked' : ''} aria-label="Select row ${esc(r.id)}">` }]
+        .concat(this.o.columns)
+      : this.o.columns;
 
     const pager = [];
     pager.push(`<button data-page="prev"${this.page === 1 ? ' disabled' : ''}>Previous</button>`);
@@ -373,6 +459,14 @@ export class DataTable {
               const on = this.sortKey === c.key;
               const canSort = c.sortable !== false;
               const ariaSort = on ? (this.sortDir === 'asc' ? 'ascending' : 'descending') : (canSort ? 'none' : null);
+              if (c.key === '__sel') {
+                const ids = this.selectableIds();
+                const all = ids.length && ids.every(i => this.selected.has(i));
+                const some = !all && ids.some(i => this.selected.has(i));
+                return `<th scope="col" class="dt__sel"><input type="checkbox" data-selall${
+                  all ? ' checked' : ''}${some ? ' data-indeterminate' : ''
+                } aria-label="Select all ${ids.length} matching rows"></th>`;
+              }
               return `<th scope="col" class="${c.className || ''}${canSort ? ' sortable' : ''}${
                 on ? (this.sortDir === 'asc' ? ' sorted-asc' : ' sorted-desc') : ''
               }"${ariaSort ? ` aria-sort="${ariaSort}"` : ''} data-sort="${canSort ? esc(c.key) : ''}">${
@@ -396,6 +490,9 @@ export class DataTable {
       <div class="dt__foot">
         <span>Showing ${total ? start + 1 : 0} to ${Math.min(start + this.size, total)} of ${num(total)} entries${
           total !== this.o.rows.length ? ` (filtered from ${num(this.o.rows.length)})` : ''}</span>
+        ${this.o.selectable && this.selected.size
+          ? `<strong style="color:var(--flare)">${num(this.selected.size)} selected</strong>
+             <button class="btn-mini" data-clearsel>Clear</button>` : ''}
         <div class="pager">${pager.join('')}</div>
       </div>
     </div>`;
@@ -410,6 +507,8 @@ export class DataTable {
   paint() {
     this.host.innerHTML = this.html();
     const root = this.host.querySelector('.dt');
+    const selAll = root.querySelector('[data-selall]');
+    if (selAll && selAll.hasAttribute('data-indeterminate')) selAll.indeterminate = true;
 
     root.addEventListener('click', e => {
       const sortTh = e.target.closest('th[data-sort]');
@@ -427,12 +526,20 @@ export class DataTable {
         else this.page = Number(v);
         return this.paint();
       }
+      if (e.target.closest('[data-clearsel]')) { this.selected.clear(); return this.paint(); }
       const act = e.target.closest('[data-act]');
       if (act && act.dataset.act === 'csv') return this.exportCsv();
       if (act && act.dataset.act === 'print') return this.print();
 
+      const box = e.target.closest('[data-sel]');
+      if (box) { e.stopPropagation(); this.toggle(box.dataset.sel, box.checked); this.paint(); return; }
+      if (e.target.closest('[data-selall]')) {
+        e.stopPropagation(); this.selectAll(e.target.checked); this.paint(); return;
+      }
+
       const tr = e.target.closest('tbody tr[data-row]');
-      if (tr && this.o.onRowClick && !e.target.closest('a,button')) {
+      // inputs and labels inside a row must never navigate away from it
+      if (tr && this.o.onRowClick && !e.target.closest('a,button,input,select,textarea,label')) {
         const row = this.o.rows.find(r => String(r.id) === tr.dataset.row);
         if (row) this.o.onRowClick(row, e);
       }

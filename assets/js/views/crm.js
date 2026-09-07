@@ -1,16 +1,27 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, avatar, usd0, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, avatar, usd0, shortDate, stat, num, modal, toast,
+         textField, selectField, textareaField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
+import { currentUser } from '../auth.js';
 
 export default function crm(view, { query }) {
+  const render = () => crm(view, { query });
+  const me = currentUser();
   const bucket = query.get('bucket') || 'All';
-  const rows = bucket === 'All' ? D.contacts : D.contactsIn(bucket);
+  const owner = query.get('owner');
+  let rows = bucket === 'All' ? D.contacts : D.contactsIn(bucket);
+  if (owner) rows = rows.filter(c => c.owner === owner);
 
   view.innerHTML = `
     ${pageHead({
       title: 'CRM — Contacts',
-      sub: 'Every relationship Overland tracks, in the six buckets from the mind map: recruiting, MPD, church network, personal, ministry and staff.',
-      actions: `<button class="btn-mini" id="quickNote">${icon('edit')} Add quick note</button>
+      sub: owner
+        ? `Contacts owned by ${owner}.`
+        : 'Every relationship Overland tracks, in the six buckets from the mind map: recruiting, MPD, church network, personal, ministry and staff.',
+      actions: `${owner ? `<a class="btn-mini" href="#/crm">Clear owner filter</a>` : ''}
+                <a class="btn-mini" href="#/reminders">${icon('bell')} Reminders &amp; events</a>
+                <button class="btn-mini" id="quickNote">${icon('edit')} Add quick note</button>
                 <button class="btn" id="addContact">Add contact</button>`
     })}
 
@@ -51,7 +62,7 @@ export default function crm(view, { query }) {
             <span class="timeline__when" style="color:#a32718">${shortDate(r.due)}</span></li>`).join('')
             || '<li><div class="timeline__body muted">Nothing overdue.</div></li>'}
         </ul>`, { title: 'Overdue reminders', icon: 'bell',
-          actions: `<a class="btn-mini" href="#/crm-activity">All</a>` })}
+          actions: `<a class="btn-mini" href="#/reminders">All</a>` })}
       </div>
     </div>`;
 
@@ -76,27 +87,64 @@ export default function crm(view, { query }) {
   view.querySelector('#addContact').addEventListener('click', () => modal({
     title: 'Add a contact', confirm: 'Add contact', wide: true,
     body: `<div class="form-grid">
-      <div class="field"><label>First name</label><input></div>
-      <div class="field"><label>Last name</label><input></div>
-      <div class="field"><label>Bucket</label><select>${D.CONTACT_BUCKETS.map(b => `<option>${b}</option>`).join('')}</select></div>
-      <div class="field span-2"><label>Email</label><input type="email"></div>
-      <div class="field"><label>Phone</label><input></div>
-      <div class="field"><label>City</label><input></div>
-      <div class="field"><label>State/Region</label><input></div>
-      <div class="field"><label>Church</label><input></div>
-      <div class="field span-3"><label>How you met</label><textarea></textarea></div>
+      ${textField('First name')}
+      ${textField('Last name')}
+      ${selectField('Bucket', D.CONTACT_BUCKETS)}
+      ${textField('Email', { type: 'email', span: 2 })}
+      ${textField('Phone')}
+      ${textField('City')}
+      ${textField('State/Region')}
+      ${textField('Church')}
+      ${textareaField('How you met', { span: 3 })}
     </div>`,
-    onConfirm: () => toast('Contact added')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['First name', 'Last name']);
+      if (v === false) return false;
+      const row = store.create('contacts', {
+        name: `${v['First name']} ${v['Last name']}`, first: v['First name'], last: v['Last name'],
+        email: v['Email'] || '', phone: v['Phone'] || '', bucket: v['Bucket'], owner: me.name,
+        city: v['City'] || '—', region: v['State/Region'] || '—', country: '—',
+        church: v['Church'] || '—', birthday: '', stage: 'New', score: 20,
+        lifetime: 0, lastGift: null, lapsed: false, recurring: false,
+        lastTouch: new Date().toISOString().slice(0, 10),
+        tags: [v['Bucket']], notes: 0, relationships: null,
+        howWeMet: v['How you met'] || ''
+      });
+      toast('Contact added');
+      location.hash = '#/crm/' + row.id;
+    }
   }));
   view.querySelector('#quickNote').addEventListener('click', () => modal({
     title: 'Add a quick note', confirm: 'Save note',
     body: `<div class="stack">
-      <div class="field"><label>Contact</label><input list="cl" placeholder="Search contacts">
-        <datalist id="cl">${D.contacts.slice(0, 80).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist></div>
-      <div class="field"><label>Note</label><textarea style="min-height:120px" placeholder="What was said, what happens next."></textarea></div>
-      <div class="field"><label>Set a reminder</label><input type="date"></div>
+      ${textField('Contact', { list: 'cl', placeholder: 'Search contacts' })}
+      <datalist id="cl">${D.contacts.slice(0, 120).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      ${textareaField('Note', { style: 'min-height:120px', placeholder: 'What was said, what happens next.' })}
+      ${textField('Set a reminder', { type: 'date' })}
     </div>`,
-    onConfirm: () => toast('Note saved to the contact timeline')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Contact', 'Note']);
+      if (v === false) return false;
+      const c = D.contacts.find(x => x.name === v['Contact']);
+      if (!c) {
+        scrim.querySelector('.modal__body').insertAdjacentHTML('afterbegin',
+          '<div class="notice notice--stop">No contact with that name.</div>');
+        return false;
+      }
+      store.update('contacts', c.id, {
+        notes: (c.notes || 0) + 1,
+        lastTouch: new Date().toISOString().slice(0, 10),
+        timeline: [...(c.timeline || []), { when: new Date().toISOString().slice(0, 10), text: v['Note'], who: me.name }]
+      });
+      if (v['Set a reminder']) {
+        store.create('reminders', {
+          title: 'Follow up: ' + v['Note'].slice(0, 40), contact: c.name, contactId: c.id,
+          owner: me.name, due: v['Set a reminder'], past: false, channel: 'Call', status: 'Open'
+        });
+      }
+      toast('Note saved' + (v['Set a reminder'] ? ' and reminder set' : ''));
+      render();
+    }
   }));
 }
 

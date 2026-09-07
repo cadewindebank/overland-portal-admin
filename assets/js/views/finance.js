@@ -1,8 +1,14 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd, usd0, shortDate, dateTime, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd, usd0, shortDate, dateTime, stat, num, modal, toast,
+         tabsUrl, textField, selectField, textareaField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
+import { APPROVAL_LIMIT, needsDualAuth } from '../policy.js';
+import { currentUser } from '../auth.js';
 
 export default function finance(view, { query }) {
+  const render = () => finance(view, { query });
+  const me = currentUser();
   const tab = query.get('tab') || 'Authorize';
   const toAuthorise = D.requests.filter(r => r.amount != null && ['Pending', 'In Review'].includes(r.status));
   const unreconciled = D.mplLines.filter(l => !l.reconciled);
@@ -29,20 +35,24 @@ export default function finance(view, { query }) {
       ${stat({ label: 'Scan exceptions', value: num(exceptions.length), accent: 'var(--bark)', meta: 'Need manual posting' })}
     </div>
 
-    <div class="tabs" id="tabs">
-      ${TABS.map(t => `<button data-tab="${t}"${t === tab ? ' class="is-active"' : ''}>${t}</button>`).join('')}
-    </div>
+    <div id="tabHost"></div>
     <div id="finBody"></div>`;
 
   const body = view.querySelector('#finBody');
-  const mount = opts => { body.innerHTML = '<div id="t"></div>'; new DataTable(Object.assign({ pageSize: 15 }, opts)).mount(body.querySelector('#t')); };
+  let table = null;
+  const mount = opts => {
+    body.innerHTML = '<div id="t"></div>';
+    table = new DataTable(Object.assign({ pageSize: 15 }, opts));
+    table.mount(body.querySelector('#t'));
+    return table;
+  };
 
-  const tabs = {
+  const tabPanels = {
     Authorize: () => mount({
       title: 'Authorize (all)', rows: toAuthorise, sortKey: 'submitted', sortDir: 'desc',
+      selectable: true,
       onRowClick: r => { location.hash = '#/requests/' + r.id; },
       columns: [
-        { key: 'sel', label: '', sortable: false, filter: false, render: r => `<input type="checkbox" data-sel="${r.id}" aria-label="Select ${r.id}">` },
         { key: 'id', label: 'ID', render: r => `<a href="#/requests/${r.id}">${r.id}</a>` },
         { key: 'typeLabel', label: 'Type' },
         { key: 'requester', label: 'Requester' },
@@ -67,8 +77,14 @@ export default function finance(view, { query }) {
           render: p => p.status === 'Paid' ? `<button class="btn-mini">Register</button>` : `<button class="btn-mini btn-mini--go" data-run="${p.id}">Review & run</button>` }
       ]
     }),
-    MPL: () => mount({
-      title: 'Ministry expense lines (MPL)', rows: D.mplLines, sortKey: 'date', sortDir: 'desc',
+    MPL: () => {
+      body.innerHTML = `<div class="row" style="margin-bottom:12px">
+          <button class="btn" id="reconcile">Reconcile selected</button>
+          <span class="muted" style="font-size:12.5px">${unreconciled.length} lines unreconciled
+            (${usd0(D.sum(unreconciled, l => l.amount))})</span>
+        </div><div id="t"></div>`;
+      const t = new DataTable({
+      title: 'Ministry expense lines (MPL)', rows: D.mplLines, pageSize: 15, selectable: true, sortKey: 'date', sortDir: 'desc',
       columns: [
         { key: 'date', label: 'Date', render: l => shortDate(l.date) },
         { key: 'staff', label: 'Staff', render: l => `<a href="#/people/${l.userId}">${esc(l.staff)}</a>` },
@@ -81,7 +97,16 @@ export default function finance(view, { query }) {
           render: l => l.reconciled ? badge('Approved', 'approved') : badge('Pending') },
         { key: 'memo', label: 'Memo' }
       ]
-    }),
+      });
+      t.mount(body.querySelector('#t'));
+      body.querySelector('#reconcile').addEventListener('click', () => {
+        const sel = t.selection();
+        if (!sel.length) return toast('Select the lines you have reconciled');
+        store.updateMany('mplLines', sel, { reconciled: true });
+        toast(`${sel.length} lines reconciled`);
+        render();
+      });
+    },
     Transfers: () => mount({
       title: 'Interbank & audit transfers', rows: D.interbankTransfers, columnFilters: false, sortKey: 'initiated', sortDir: 'desc',
       columns: [
@@ -109,8 +134,13 @@ export default function finance(view, { query }) {
         { key: 'status', label: 'Status', render: r => badge(r.status) }
       ]
     }),
-    Receipts: () => mount({
-      title: 'Receipt batches', rows: D.receiptBatches, columnFilters: false, sortKey: 'generated', sortDir: 'desc',
+    Receipts: () => {
+      body.innerHTML = `<div class="row" style="margin-bottom:12px">
+          <button class="btn" id="genEoy">Generate end-of-year receipts</button>
+          <button class="btn-mini" id="genWeekly">Generate weekly batch</button>
+        </div><div id="t"></div>`;
+      const t = new DataTable({
+      title: 'Receipt batches', rows: D.receiptBatches, pageSize: 15, columnFilters: false, sortKey: 'generated', sortDir: 'desc',
       columns: [
         { key: 'kind', label: 'Kind' },
         { key: 'period', label: 'Period' },
@@ -120,9 +150,14 @@ export default function finance(view, { query }) {
         { key: 'delivered', label: 'Delivered', className: 'center', value: b => b.delivered ? 'Yes' : 'No',
           render: b => b.delivered ? badge('Sent') : badge('Pending') },
         { key: 'status', label: 'Status', render: b => badge(b.status === 'Generating' ? 'In Review' : b.status) },
-        { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Download</button>` }
+        { key: 'act', label: '', sortable: false, filter: false,
+          render: b => `<button class="btn-mini" data-dl="${b.id}">Download</button>` }
       ]
-    }),
+      });
+      t.mount(body.querySelector('#t'));
+      body.querySelector('#genEoy').addEventListener('click', () => generateReceipts('End of Year'));
+      body.querySelector('#genWeekly').addEventListener('click', () => generateReceipts('Weekly'));
+    },
     'Easy Scan': () => mount({
       title: 'Easy Scan queue', rows: D.easyScanQueue, columnFilters: false, sortKey: 'received', sortDir: 'desc',
       columns: [
@@ -135,7 +170,7 @@ export default function finance(view, { query }) {
         { key: 'status', label: 'Status',
           render: b => badge(b.status === 'Posted' ? 'Paid' : b.status === 'Exception' ? 'Denied' : 'Pending') },
         { key: 'act', label: '', sortable: false, filter: false,
-          render: b => b.status === 'Posted' ? '' : `<button class="btn-mini" data-post="${b.id}">Review & post</button>` }
+          render: b => b.status === 'Posted' ? '' : `<button class="btn-mini" data-post="${b.id}">Review &amp; post</button>` }
       ]
     }),
     'QB Customers': () => mount({
@@ -148,7 +183,9 @@ export default function finance(view, { query }) {
         { key: 'lastSync', label: 'Last sync', render: q => dateTime(q.lastSync) },
         { key: 'synced', label: 'Synced', className: 'center', value: q => q.synced ? 'Yes' : 'No',
           render: q => q.synced ? badge('Active') : badge('Missing', 'denied') },
-        { key: 'issue', label: 'Issue', render: q => q.issue ? `<span style="color:#a32718">${esc(q.issue)}</span>` : '—' }
+        { key: 'issue', label: 'Issue', render: q => q.issue ? `<span style="color:#a32718">${esc(q.issue)}</span>` : '—' },
+        { key: 'act', label: '', sortable: false, filter: false,
+          render: q => q.synced ? '' : `<button class="btn-mini" data-sync="${q.id}">Sync now</button>` }
       ]
     }),
     Reports: () => {
@@ -172,24 +209,168 @@ export default function finance(view, { query }) {
     }
   };
 
-  (tabs[tab] || tabs.Authorize)();
-  view.querySelector('#tabs').addEventListener('click', e => {
-    const b = e.target.closest('[data-tab]');
-    if (!b) return;
-    view.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('is-active', x === b));
-    tabs[b.dataset.tab]();
-  });
+  const strip = tabsUrl(TABS, name => (tabPanels[name] || tabPanels.Authorize)(), tab, 'tab');
+  view.querySelector('#tabHost').innerHTML = strip.html;
+  strip.mount(view);
+  (tabPanels[strip.active] || tabPanels.Authorize)();
   body.addEventListener('click', e => {
-    if (e.target.closest('[data-post]')) toast('Batch posted to the ledger');
-    if (e.target.closest('[data-run]')) toast('Payroll run opened for review');
+    const post = e.target.closest('[data-post]');
+    if (post) {
+      store.update('easyScanQueue', post.dataset.post, { status: 'Posted' });
+      toast('Batch posted to the ledger'); return render();
+    }
+    const sync = e.target.closest('[data-sync]');
+    if (sync) {
+      store.update('qbCustomers', sync.dataset.sync,
+        { synced: true, issue: null, lastSync: new Date().toISOString().slice(0, 16).replace('T', ' ') });
+      toast('Customer synced to QuickBooks'); return render();
+    }
+    const dl = e.target.closest('[data-dl]');
+    if (dl) {
+      const b = D.receiptBatches.find(x => String(x.id) === dl.dataset.dl);
+      downloadBatch(b); return;
+    }
+    const run = e.target.closest('[data-run]');
+    if (run) return openPayroll(run.dataset.run);
   });
 
-  view.querySelector('#authorizeAll').addEventListener('click', () => modal({
-    title: 'Authorize all pending financial requests', confirm: 'Authorize',
-    body: `<p style="margin-top:0"><strong>${toAuthorise.length}</strong> requests totalling <strong>${usd0(D.sum(toAuthorise, r => r.amount))}</strong>.</p>
-      <p class="muted">Every authorisation is written to the audit log against your account.</p>
-      <div class="field" style="margin-top:14px"><label>Authorisation note</label><textarea></textarea></div>`,
-    onConfirm: () => toast(`${toAuthorise.length} requests authorised`)
+  /* --- receipt generation — previously impossible anywhere in the portal --- */
+  function generateReceipts(kind) {
+    const years = [...new Set(D.donations.map(d => d.date.slice(0, 4)))].sort().reverse();
+    modal({
+      title: kind === 'End of Year' ? 'Generate end-of-year tax receipts' : 'Generate a weekly receipt batch',
+      confirm: 'Generate batch',
+      body: `${selectField('Period', kind === 'End of Year' ? years : ['This week', 'Last week'])}
+        ${selectField('Include', ['Receiptable gifts only', 'All gifts'])}
+        <div class="notice notice--warn">Receipts are legal documents. Generating a batch marks
+          every included gift as receipted and writes the batch to the audit log.</div>`,
+      onConfirm: scrim => {
+        const v = readForm(scrim);
+        const year = v['Period'];
+        const gifts = D.donations.filter(d =>
+          d.amount > 0 && !['Refunded', 'Voided'].includes(d.status) &&
+          (kind !== 'End of Year' || d.date.startsWith(year)));
+        if (!gifts.length) {
+          scrim.querySelector('.modal__body').insertAdjacentHTML('afterbegin',
+            '<div class="notice notice--stop">No gifts match that period.</div>');
+          return false;
+        }
+        const donors = new Set(gifts.map(g => g.donor));
+        store.create('receiptBatches', {
+          kind, period: kind === 'End of Year' ? `FY${year}` : v['Period'],
+          count: donors.size, amount: D.sum(gifts, g => g.amount),
+          generated: new Date().toISOString().slice(0, 10),
+          delivered: false, status: 'Generating'
+        });
+        store.updateMany('donations', gifts.filter(g => !g.receipted).map(g => g.id), { receipted: true });
+        toast(`${donors.size} receipts generated covering ${usd0(D.sum(gifts, g => g.amount))}`);
+        render();
+      }
+    });
+  }
+
+  function downloadBatch(b) {
+    if (!b) return;
+    const rows = [['Batch', 'Kind', 'Period', 'Receipts', 'Amount', 'Generated'],
+      [b.id, b.kind, b.period, b.count, b.amount, b.generated]];
+    const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `receipts-${b.period.replace(/\W+/g, '-').toLowerCase()}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast('Receipt batch downloaded');
+  }
+
+  function openPayroll(id) {
+    const p = D.payrollRuns.find(x => String(x.id) === String(id));
+    if (!p) return;
+    modal({
+      title: `Payroll — ${p.period}`, confirm: p.status === 'Draft' ? 'Approve and run' : 'Mark paid', wide: true,
+      body: `<div class="grid grid--4" style="text-align:center;margin-bottom:14px">
+          <div><div class="eyebrow">People</div><div style="font-family:var(--font-display);font-size:28px">${p.people}</div></div>
+          <div><div class="eyebrow">Gross</div><div style="font-family:var(--font-display);font-size:28px">${usd0(p.gross)}</div></div>
+          <div><div class="eyebrow">Withholding</div><div style="font-family:var(--font-display);font-size:28px">${usd0(p.taxes)}</div></div>
+          <div><div class="eyebrow">Net</div><div style="font-family:var(--font-display);font-size:28px">${usd0(p.net)}</div></div>
+        </div>
+        <div class="notice notice--warn">Running payroll is irreversible from this screen.</div>
+        ${textareaField('Run note', {})}`,
+      onConfirm: () => {
+        store.update('payrollRuns', p.id, { status: p.status === 'Draft' ? 'Pending' : 'Paid' });
+        toast(`${p.period} payroll ${p.status === 'Draft' ? 'approved' : 'marked paid'}`);
+        render();
+      }
+    });
+  }
+
+  view.querySelector('#authorizeAll').addEventListener('click', () => {
+    const picked = (table && table.selection().length)
+      ? table.selection().map(id => D.findRequest(id)).filter(Boolean)
+      : toAuthorise;
+    const usingSelection = !!(table && table.selection().length);
+    const limit = APPROVAL_LIMIT[me.role] ?? 0;
+    const over = picked.filter(r => r.amount > limit);
+    const dual = picked.filter(r => needsDualAuth(r.amount));
+
+    modal({
+      title: usingSelection ? `Authorize ${picked.length} selected` : 'Authorize every pending request',
+      confirm: 'Authorize',
+      body: `<p style="margin-top:0"><strong>${picked.length}</strong> requests totalling
+          <strong>${usd0(D.sum(picked, r => r.amount))}</strong>.</p>
+        ${usingSelection
+          ? '<div class="notice notice--go">Only the rows you selected will be authorised.</div>'
+          : '<div class="notice notice--warn">No rows are selected, so this covers <strong>every</strong> pending financial request. Tick rows first to authorise a subset.</div>'}
+        ${over.length ? `<div class="notice notice--warn">${over.length} exceed your ${usd0(limit)} limit and will be skipped.</div>` : ''}
+        ${dual.length ? `<div class="notice notice--warn">${dual.length} need a second authoriser.</div>` : ''}
+        <p class="muted">Every authorisation is written to the audit log against your account.</p>
+        ${textareaField('Authorisation note', {})}`,
+      onConfirm: scrim => {
+        const note = readForm(scrim)['Authorisation note'] || '';
+        let ok = 0, skipped = 0, second = 0;
+        picked.forEach(r => {
+          if (r.amount > limit) { skipped++; return; }
+          const next = needsDualAuth(r.amount) ? 'Awaiting 2nd approval' : 'Approved';
+          next === 'Approved' ? ok++ : second++;
+          store.update('requests', r.id, {
+            status: next, approvedBy: me.name,
+            thread: [...r.thread, { who: me.name, when: new Date().toISOString().slice(0, 16).replace('T', ' '),
+              text: note || 'Authorised from the finance console.' }]
+          });
+        });
+        toast(`${ok} authorised${second ? `, ${second} awaiting 2nd approval` : ''}${skipped ? `, ${skipped} over limit` : ''}`);
+        render();
+      }
+    });
+  });
+
+  view.querySelector('#close').addEventListener('click', () => modal({
+    title: 'Close the period', confirm: 'Close period',
+    body: `<div class="notice notice--warn">Closing a period locks it against further posting.
+        Reopening requires an administrator.</div>
+      ${selectField('Period', ['September 2026', 'August 2026', 'July 2026'])}
+      <p class="muted">Open items in this period:</p>
+      <ul style="margin:0;padding-left:18px">
+        <li>${toAuthorise.length} requests awaiting authorisation</li>
+        <li>${unreconciled.length} unreconciled MPL lines (${usd0(D.sum(unreconciled, l => l.amount))})</li>
+        <li>${exceptions.length} Easy Scan exceptions</li>
+      </ul>
+      ${textareaField('Close-out note', {})}`,
+    onConfirm: scrim => {
+      const v = readForm(scrim);
+      if (toAuthorise.length || exceptions.length) {
+        return invalidClose(scrim, toAuthorise.length, exceptions.length);
+      }
+      toast(`${v['Period']} closed for posting`);
+    }
   }));
-  view.querySelector('#close').addEventListener('click', () => toast('September 2026 closed for posting'));
+
+  function invalidClose(scrim, a, b) {
+    const host = scrim.querySelector('.modal__body');
+    if (!host.querySelector('.notice--stop')) {
+      host.insertAdjacentHTML('afterbegin',
+        `<div class="notice notice--stop">Cannot close: ${a} requests are still awaiting authorisation
+         and ${b} scan exceptions are unresolved. Clear these first.</div>`);
+    }
+    return false;
+  }
 }

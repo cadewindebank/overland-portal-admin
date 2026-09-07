@@ -6,6 +6,7 @@ import { esc, initials, toast } from './ui.js';
 import * as D from './data.js';
 import { loadSession, currentUser, can, signOut, audit as logAudit } from './auth.js';
 import { ROUTE_CAPABILITY } from './policy.js';
+import * as store from './store.js';
 
 import dashboard      from './views/dashboard.js';
 import people         from './views/people.js';
@@ -36,6 +37,8 @@ import mpd            from './views/mpd.js';
 import finance        from './views/finance.js';
 import generalAdmin   from './views/generalAdmin.js';
 import amt            from './views/amt.js';
+import reminders      from './views/reminders.js';
+import donation       from './views/donation.js';
 
 /* --- navigation model ----------------------------------------------------- */
 export const NAV = [
@@ -108,6 +111,8 @@ const ROUTES = [
   [/^\/?$/,                     dashboard,     'dashboard'],
   [/^\/crm$/,                   crm,           'crm'],
   [/^\/crm\/([^/]+)$/,          contact,       'crm'],
+  [/^\/reminders$/,             reminders,     'crm'],
+  [/^\/donations\/([^/]+)$/,    donation,      'donations'],
   [/^\/fundraising$/,           fundraising,   'fundraising'],
   [/^\/recruiting$/,            recruiting,    'recruiting'],
   [/^\/marketing$/,             marketing,     'marketing'],
@@ -359,6 +364,7 @@ function globalSearch(q) {
 }
 
 /* --- router --------------------------------------------------------------- */
+let currentNavId = null;
 function route() {
   const raw = (location.hash || '#/').slice(1);
   const [path, search] = raw.split('?');
@@ -368,6 +374,7 @@ function route() {
   for (const [re, render, navId] of ROUTES) {
     const m = re.exec(path);
     if (!m) continue;
+    currentNavId = navId;
     renderRail(navId);
     document.getElementById('rail').classList.remove('is-open');
 
@@ -430,8 +437,12 @@ function forbiddenHtml(cap) {
   }
   if (!currentUser()) { location.replace('/login'); return; }
 
+  // replay any changes made in a previous session over the seeded data
+  store.hydrate();
+
   shell();
   const u = currentUser();
+  window.__omUser = u;   // the store's audit journal stamps entries with this
   document.getElementById('whoami').textContent = `${u.name} · ${u.role}`;
   document.getElementById('signOut').addEventListener('click', signOut);
   document.getElementById('footForm').addEventListener('submit', e => {
@@ -439,6 +450,8 @@ function forbiddenHtml(cap) {
     toast('Subscribed to internal notices');
   });
   window.addEventListener('hashchange', route);
+  // a write anywhere refreshes the nav counters
+  store.subscribe(() => { const active = document.querySelector('.rail__link.is-active'); renderRail(active ? currentNavId : null); });
   route();
   logAudit('session.start', u.userId);
 })();

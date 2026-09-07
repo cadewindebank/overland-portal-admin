@@ -1,0 +1,88 @@
+import * as D from '../data.js';
+import { icon } from '../icons.js';
+import { pageHead, card, esc, toast, badge, num, deflist } from '../ui.js';
+
+export default function settings(view) {
+  view.innerHTML = `
+    ${pageHead({
+      title: 'Settings',
+      sub: 'Portal configuration — branding, routing, form links and integrations.',
+      actions: `<button class="btn" id="save">Save changes</button>`
+    })}
+
+    <div class="grid grid--2">
+      <div class="stack">
+        ${card(`
+          <div class="form-grid form-grid--2">
+            <div class="field span-2"><label>Organisation name</label><input value="Overland Missions"></div>
+            <div class="field span-2"><label>Portal URL</label><input value="portal.overlandmissions.com"></div>
+            <div class="field"><label>Support email</label><input value="support@example.org"></div>
+            <div class="field"><label>Default timezone</label><select><option>UTC</option><option selected>America/New_York</option><option>Africa/Lusaka</option></select></div>
+            <div class="field"><label>Fiscal year start</label><select><option>January</option><option selected>October</option></select></div>
+            <div class="field"><label>Default currency</label><select><option>USD</option></select></div>
+          </div>`, { title: 'Organisation', icon: 'settings' })}
+
+        ${card(`
+          <p class="muted" style="margin-top:0">The brand tokens the portal renders with. These mirror the public site.</p>
+          <div class="grid grid--4" style="gap:10px">
+            ${[['Shadow','#0f0e0d'],['Flare','#ec4300'],['Bone','#ddd7ce'],['Sand','#baa283'],
+               ['Slate','#393d36'],['Rain','#324360'],['Sap','#b4894c'],['Vine','#354c21'],
+               ['Emerald Pine','#005744'],['Lagoon','#638791'],['Sprout','#859671'],['Bark','#865c42']].map(([n, hex]) => `
+              <div style="border:1px solid var(--line);border-radius:3px;overflow:hidden">
+                <div style="height:42px;background:${hex}"></div>
+                <div style="padding:6px 8px"><div style="font-size:12px;font-weight:500">${n}</div>
+                  <div class="muted" style="font-size:11px;font-variant-numeric:tabular-nums">${hex}</div></div>
+              </div>`).join('')}
+          </div>
+          <div class="hr"></div>
+          ${deflist([
+            ['Display type', 'IBM Plex Sans Condensed SemiBold'],
+            ['Body type', 'Work Sans'],
+            ['Numerals & stats', 'Teko'],
+            ['Primary button', 'Flare, uppercase, 11px / 1.12px tracking']
+          ])}`, { title: 'Brand', icon: 'image' })}
+      </div>
+
+      <div class="stack">
+        ${card(`
+          <p class="muted" style="margin-top:0">Where each submitted form is routed for review.</p>
+          ${D.REQUEST_TYPES.map(t => `
+            <div class="row row--between" style="padding:10px 0;border-bottom:1px solid var(--line);gap:12px">
+              <span style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="color:var(--slate);display:inline-flex">${icon(t.icon)}</span>${esc(t.label)}</span>
+              <select style="max-width:180px">${['Finance','Media','Operations','People & Care','Leadership'].map(q =>
+                `<option${q === t.queue ? ' selected' : ''}>${q}</option>`).join('')}</select>
+            </div>`).join('')}`, { title: 'Form routing', icon: 'inbox' })}
+
+        ${card(`
+          <div class="stack">
+            ${[
+              ['Payment processor', 'Connected', 'Card and ACH giving'],
+              ['Accounting export', 'Connected', 'Nightly journal sync'],
+              ['Email delivery', 'Connected', 'Transactional and alert email'],
+              ['Identity provider', 'Not connected', 'Single sign-on for staff'],
+              ['Background checks', 'Connected', 'Applicant screening'],
+              ['Travel insurance (TTc)', 'Connected', 'Policy issue and renewal']
+            ].map(([n, s, d]) => `
+              <div class="row row--between" style="padding:10px 0;border-bottom:1px solid var(--line);gap:12px">
+                <div><strong>${esc(n)}</strong><div class="muted" style="font-size:12px">${esc(d)}</div></div>
+                ${badge(s === 'Connected' ? 'Active' : 'Missing', s === 'Connected' ? 'approved' : 'draft')}
+              </div>`).join('')}
+          </div>`, { title: 'Integrations', icon: 'grid' })}
+
+        ${card(`
+          ${deflist([
+            ['Accounts', num(D.users.length)],
+            ['Expeditions', num(D.expeditions.length)],
+            ['Donation records', num(D.donations.length)],
+            ['Requests', num(D.requests.length)],
+            ['Audit events retained', num(D.auditLog.length)],
+            ['Data since', '1 January 2021']
+          ])}
+          <p class="muted" style="font-size:12.5px;margin-bottom:0">Balances accumulated before 1 January 2021 appear as a beginning balance on each account.</p>`,
+          { title: 'Data', icon: 'chart' })}
+      </div>
+    </div>`;
+
+  view.querySelector('#save').addEventListener('click', () => toast('Settings saved'));
+}

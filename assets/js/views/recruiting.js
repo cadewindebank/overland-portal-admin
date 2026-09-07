@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast,
+         textField, selectField, textareaField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
 
 export default function recruiting(view) {
+  const render = () => recruiting(view);
   const open = D.signups.filter(s => !s.converted);
   const pastMembers = D.contacts.filter(c => c.tags.includes('Past Team Member'));
   const byRegion = {};
@@ -73,19 +76,54 @@ export default function recruiting(view) {
       { key: 'church', label: 'Church' },
       { key: 'owner', label: 'Owner' },
       { key: 'lastTouch', label: 'Last touch', render: c => shortDate(c.lastTouch) },
-      { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Invite back</button>` }
+      { key: 'act', label: '', sortable: false, filter: false,
+        render: c => `<button class="btn-mini" data-invite="${c.id}">Invite back</button>` }
     ]
   }).mount(view.querySelector('#pastTable'));
+
+  view.querySelector('#pastTable').addEventListener('click', e => {
+    const b = e.target.closest('[data-invite]');
+    if (!b) return;
+    const c = D.findContact(b.dataset.invite);
+    modal({
+      title: `Invite ${c.name} back`, confirm: 'Send invitation',
+      body: `${selectField('Expedition', D.expeditions.filter(x => x.status === 'Open').map(x => x.name))}
+        ${textareaField('Personal note', { placeholder: 'Why you would love them on this team.' })}`,
+      onConfirm: scrim => {
+        const v = readForm(scrim);
+        store.create('signups', {
+          name: c.name, contactId: c.id, email: c.email,
+          interest: 'Expedition', target: v['Expedition'], source: 'Past team member',
+          created: new Date().toISOString().slice(0, 10), assigned: c.owner,
+          converted: false, status: 'Contacted'
+        });
+        store.update('contacts', c.id,
+          { stage: 'Contacted', lastTouch: new Date().toISOString().slice(0, 10) }, { silent: true });
+        toast(`${c.name} invited to ${v['Expedition']}`);
+        render();
+      }
+    });
+  });
 
   view.querySelector('#sheet').addEventListener('click', () => modal({
     title: 'New sign-up sheet', confirm: 'Create sheet',
     body: `<div class="stack">
-      <div class="field"><label>Sheet name</label><input placeholder="Cornerstone Church — vision night"></div>
-      <div class="field"><label>Points at</label><select>${D.expeditions.map(e => `<option>${esc(e.name)}</option>`).join('')}<option>General interest</option></select></div>
-      <div class="field"><label>Assign new sign-ups to</label><select>${D.users.slice(0, 20).map(u => `<option>${esc(u.name)}</option>`).join('')}</select></div>
+      ${textField('Sheet name', { placeholder: 'Cornerstone Church — vision night' })}
+      ${selectField('Points at', D.expeditions.map(e => e.name).concat(['General interest']))}
+      ${selectField('Assign new sign-ups to', D.users.slice(0, 20).map(u => u.name))}
     </div>`,
-    onConfirm: () => toast('Sign-up sheet created — share link copied')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Sheet name']);
+      if (v === false) return false;
+      toast(`\u201c${v['Sheet name']}\u201d created — new sign-ups route to ${v['Assign new sign-ups to']}`);
+    }
   }));
-  view.querySelector('#assign').addEventListener('click', () =>
-    toast(`${D.signups.filter(s => !s.assigned).length} unassigned sign-ups distributed`));
+  view.querySelector('#assign').addEventListener('click', () => {
+    const un = D.signups.filter(s => !s.assigned);
+    if (!un.length) return toast('Every sign-up already has an owner');
+    const owners = D.users.filter(u => u.type === 'Staff').slice(0, 8).map(u => u.name);
+    un.forEach((s, i) => store.update('signups', s.id, { assigned: owners[i % owners.length] }, { silent: true }));
+    toast(`${un.length} sign-ups distributed across ${owners.length} owners`);
+    render();
+  });
 }

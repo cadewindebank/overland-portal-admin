@@ -39,9 +39,11 @@ of Expeditions, AMT, Staff and Leaders.
 | **Workflow** | Request queue across all nine form types · request detail with funding check and approval flow · tasks · alerts & comms · media library |
 | **Admin** | General Admin (countries, regions, groups, expedition insurance, stock photos, create user) · audit log · security & device sessions · settings |
 
-Every table is a full DataTable — global search, per-column filters, sortable headers, page-length
-menu, pagination, CSV export and print — matching the behaviour of the tables already in the live
-portal.
+Most tables are full DataTables — global search, sortable headers, page-length menu, pagination,
+CSV export and print, matching the tables already in the live portal. Per-column filters are on by
+default and switched off on the narrower tables; the permission matrix is a plain table because it
+is a grid of checkboxes, not a record list. Tables that support batch actions carry selection that
+survives sorting, paging and filtering, with select-all across the whole filtered set.
 
 ---
 
@@ -57,9 +59,14 @@ Support     Bark #865c42     Clay #bd947c    Deep Sea #1e2434
 Sub-brand   Rain #324360     Sap #b4894c     Vine #354c21
 ```
 
-- **IBM Plex Sans Condensed SemiBold** — page titles, eyebrows, rail headings
-- **Work Sans** — body, tables, forms
-- **Teko** — large numerals in stat tiles
+Type roles are taken from the site's own `--_typography---font-styles--*` variables:
+
+- **Teko** — headings (page titles, hero bands, stat numerals)
+- **IBM Plex Sans Condensed** — eyebrows, rail links, table headers, buttons
+- **Work Sans** — body, section headings, forms
+
+All three are self-hosted from `assets/fonts/` (latin subset, ~320KB), so there is no
+runtime third-party dependency and the CSP needs no external origins.
 
 The primary button reproduces the public site's `.button` rule exactly: Flare fill, Bone text,
 uppercase, 11px / 600 / 1.12px tracking, square corners, 14px × 16px padding.
@@ -89,14 +96,36 @@ assets/
 
 ## Wiring it to a real backend
 
-`assets/js/data.js` is the only module that knows where data comes from. It ends with a block of
-accessor functions — `findUser`, `findContact`, `pendingRequests`, `pendingFunds`, `lapsedDonors`,
-`userDonations` and so on. Replace those with `fetch` calls (and make the views `await` them) and
-nothing else has to change; the views reach data through those accessors.
+Two modules form the seam:
 
-The dataset is seeded, so it renders identically on every load — useful for screenshots and demos.
+- **`assets/js/data.js`** seeds the collections and exports read accessors
+  (`findUser`, `findContact`, `pendingRequests`, `pendingFunds`, `lapsedDonors`,
+  `userDonations`, …). Views import it as `import * as D` and read both the
+  accessors and the arrays directly — the arrays are the read model.
+- **`assets/js/store.js`** is the only module that *writes*. `create`, `update`,
+  `remove` and `updateMany` notify subscribers, journal to the audit log, and
+  mirror to `localStorage`.
 
----
+To move to an API, change those two: make the store's four primitives `await
+fetch(...)`, and replace the seeded arrays with fetched data. Views call
+`store.create('users', {...})` and then re-render, so their call sites do not
+change — but they will need to `await`.
+
+`assets/js/auth.js` holds `SESSION_ENDPOINT` and `AUDIT_ENDPOINT`. Both are
+`null` today, which selects the mock provider.
+
+The dataset is seeded, so it renders identically on every load — useful for
+screenshots and demos. `store.resetAll()` clears local changes.
+
+## Security
+
+Short version: the client-side checks are a **UX guard, not a boundary**. The
+server must re-check every capability on every request. Read
+[docs/SECURITY.md](docs/SECURITY.md) before deploying anything real.
+
+Open decisions, including the primary button's WCAG contrast, are in
+[docs/DECISIONS.md](docs/DECISIONS.md). Header configuration for nginx, Vercel
+and Netlify is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Notes
 

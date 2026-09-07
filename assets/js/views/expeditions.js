@@ -1,6 +1,8 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, progress, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, progress, modal, toast,
+         textField, selectField, textareaField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function expeditions(view) {
   const active = D.expeditions.filter(e => e.status !== 'Closed');
@@ -66,16 +68,33 @@ export default function expeditions(view) {
   view.querySelector('#newExp').addEventListener('click', () => modal({
     title: 'Create an expedition', confirm: 'Create expedition', wide: true,
     body: `<div class="form-grid">
-      <div class="field span-2"><label>Expedition name</label><input placeholder="2027 AMT Zambia January"></div>
-      <div class="field"><label>Code</label><input placeholder="ZAM-2027-1"></div>
-      <div class="field"><label>Country</label><input placeholder="Zambia"></div>
-      <div class="field"><label>Sector</label><select>${['Southern Africa','East Africa','North Africa','Middle East','South America','Global'].map(s => `<option>${s}</option>`).join('')}</select></div>
-      <div class="field"><label>Departure date</label><input type="date"></div>
-      <div class="field"><label>Length (days)</label><input type="number" value="10"></div>
-      <div class="field"><label>Trip cost (USD)</label><input type="number" value="3900"></div>
-      <div class="field"><label>Team capacity</label><input type="number" value="16"></div>
-      <div class="field span-3"><label>Notes for applicants</label><textarea placeholder="What this team will be doing and who it is for."></textarea></div>
+      ${textField('Expedition name', { placeholder: '2027 AMT Zambia January', span: 2 })}
+      ${textField('Code', { placeholder: 'ZAM-2027-1' })}
+      ${textField('Country', { placeholder: 'Zambia' })}
+      ${selectField('Sector', ['Southern Africa','East Africa','North Africa','Middle East','South America','Global'])}
+      ${textField('Departure date', { type: 'date' })}
+      ${textField('Length (days)', { type: 'number', value: 10 })}
+      ${textField('Trip cost (USD)', { type: 'number', value: 3900 })}
+      ${textField('Team capacity', { type: 'number', value: 16 })}
+      ${textareaField('Notes for applicants', { placeholder: 'What this team will be doing and who it is for.', span: 3 })}
     </div>`,
-    onConfirm: () => toast('Expedition created as a draft')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Expedition name', 'Country', 'Departure date']);
+      if (v === false) return false;
+      const days = Number(v['Length (days)']) || 10;
+      const start = new Date(v['Departure date'] + 'T00:00:00');
+      const row = store.create('expeditions', {
+        name: v['Expedition name'], code: v['Code'] || v['Country'].slice(0, 3).toUpperCase(),
+        country: v['Country'], sector: v['Sector'], start: v['Departure date'],
+        end: new Date(start.getTime() + days * 86400000).toISOString().slice(0, 10),
+        days, cost: Number(v['Trip cost (USD)']) || 0,
+        capacity: Number(v['Team capacity']) || 12,
+        status: 'Open', daysOut: Math.round((start - new Date('2026-09-07')) / 86400000),
+        leader: '\u2014', roster: [], raised: 0, goal: 0, pct: 0,
+        resources: [], notes: v['Notes for applicants'] || ''
+      });
+      toast('Expedition created');
+      location.hash = '#/expeditions/' + row.id;
+    }
   }));
 }

@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, modal, toast,
+         textField, selectField, textareaField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function marketing(view) {
+  const render = () => marketing(view);
   const sent = D.campaigns.filter(c => c.status === 'Sent');
   const openRate = sent.length ? Math.round(D.sum(sent, c => c.opened) / D.sum(sent, c => c.sent) * 100) : 0;
   const expSignups = D.signups.filter(s => s.interest === 'Expedition').length;
@@ -62,7 +65,8 @@ export default function marketing(view) {
           { key: 'published', label: 'Published', render: b => shortDate(b.published) },
           { key: 'views', label: 'Views', className: 'num', render: b => num(b.views) },
           { key: 'status', label: 'Status', render: b => badge(b.status === 'Published' ? 'Live' : b.status) },
-          { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Edit</button>` }
+          { key: 'act', label: '', sortable: false, filter: false,
+            render: b => `<button class="btn-mini" data-blog="${b.id}">Edit</button>` }
         ]
       }).mount(body.querySelector('#t'));
     },
@@ -78,7 +82,8 @@ export default function marketing(view) {
             render: s => Math.round(s.responses / s.sent * 100) + '%' },
           { key: 'created', label: 'Created', render: s => shortDate(s.created) },
           { key: 'status', label: 'Status', render: s => badge(s.status === 'Closed' ? 'Draft' : s.status) },
-          { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Results</button>` }
+          { key: 'act', label: '', sortable: false, filter: false,
+            render: s => `<button class="btn-mini" data-survey="${s.id}">Results</button>` }
         ]
       }).mount(body.querySelector('#t'));
     },
@@ -105,6 +110,49 @@ export default function marketing(view) {
       </div>`;
     }
   };
+  body.addEventListener('click', e => {
+    const bl = e.target.closest('[data-blog]');
+    if (bl) {
+      const b = D.blogs.find(x => String(x.id) === bl.dataset.blog);
+      return modal({
+        title: 'Edit post', confirm: 'Save post', wide: true,
+        body: `${textField('Title', { value: b.title })}
+          <div class="form-grid form-grid--2">
+            ${selectField('Category', ['Field Stories','Expeditions','Ministry','Updates'], { value: b.category })}
+            ${selectField('Status', ['Draft','Scheduled','Published'], { value: b.status })}
+          </div>
+          ${textareaField('Body', { style: 'min-height:160px' })}`,
+        onConfirm: scrim => {
+          const v = requireFields(scrim, ['Title']);
+          if (v === false) return false;
+          store.update('blogs', b.id, { title: v['Title'], category: v['Category'], status: v['Status'] });
+          toast('Post saved');
+          render();
+        }
+      });
+    }
+    const sv = e.target.closest('[data-survey]');
+    if (sv) {
+      const s = D.surveys.find(x => String(x.id) === sv.dataset.survey);
+      const rate = Math.round(s.responses / Math.max(1, s.sent) * 100);
+      return modal({
+        title: s.title, confirm: s.status === 'Open' ? 'Close survey' : 'Reopen survey',
+        body: `<div class="grid grid--3" style="text-align:center;margin-bottom:14px">
+            <div><div class="eyebrow">Sent</div><div style="font-family:var(--font-display);font-size:28px">${num(s.sent)}</div></div>
+            <div><div class="eyebrow">Responses</div><div style="font-family:var(--font-display);font-size:28px">${num(s.responses)}</div></div>
+            <div><div class="eyebrow">Rate</div><div style="font-family:var(--font-display);font-size:28px">${rate}%</div></div>
+          </div>
+          <div class="progress"><i style="width:${rate}%"></i></div>
+          <p class="muted" style="margin-top:14px">Responses are stored with the survey and exportable as CSV.</p>`,
+        onConfirm: () => {
+          store.update('surveys', s.id, { status: s.status === 'Open' ? 'Closed' : 'Open' });
+          toast(`Survey ${s.status === 'Open' ? 'closed' : 'reopened'}`);
+          render();
+        }
+      });
+    }
+  });
+
   views['Campaigns & automations']();
   view.querySelector('#tabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]');
@@ -116,14 +164,43 @@ export default function marketing(view) {
   view.querySelector('#campaign').addEventListener('click', () => modal({
     title: 'New campaign', confirm: 'Create campaign', wide: true,
     body: `<div class="form-grid">
-      <div class="field span-2"><label>Campaign name</label><input placeholder="Year-End Giving 2026"></div>
-      <div class="field"><label>Type</label><select><option>Campaign</option><option>Automation</option><option>Journey</option></select></div>
-      <div class="field"><label>Audience</label><select>${['All Donors','Lapsed Donors','Past Team Members','Church Network','Recruiting Leads'].map(a => `<option>${a}</option>`).join('')}</select></div>
-      <div class="field"><label>Send date</label><input type="date"></div>
-      <div class="field"><label>From</label><input value="Overland Missions"></div>
-      <div class="field span-3"><label>Subject line</label><input placeholder="What your giving made possible this year"></div>
+      ${textField('Campaign name', { placeholder: 'Year-End Giving 2026', span: 2 })}
+      ${selectField('Type', ['Campaign', 'Automation', 'Journey'])}
+      ${selectField('Audience', ['All Donors','Lapsed Donors','Past Team Members','Church Network','Recruiting Leads'])}
+      ${textField('Send date', { type: 'date' })}
+      ${textField('From', { value: 'Overland Missions' })}
+      ${textField('Subject line', { placeholder: 'What your giving made possible this year', span: 3 })}
     </div>`,
-    onConfirm: () => toast('Campaign created as a draft')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Campaign name', 'Subject line']);
+      if (v === false) return false;
+      store.create('campaigns', {
+        name: v['Campaign name'], kind: v['Type'], audience: v['Audience'],
+        status: 'Draft', sent: 0, opened: 0, clicked: 0, conversions: 0, revenue: 0,
+        date: v['Send date'] || new Date().toISOString().slice(0, 10),
+        subject: v['Subject line'], from: v['From']
+      });
+      toast('Campaign created as a draft');
+      render();
+    }
   }));
-  view.querySelector('#journey').addEventListener('click', () => toast('Customer journey builder opened'));
+  view.querySelector('#journey').addEventListener('click', () => modal({
+    title: 'New customer journey', confirm: 'Create journey',
+    body: `${textField('Journey name', { placeholder: 'New donor welcome' })}
+      ${selectField('Trigger', ['First gift received', 'Sign-up sheet submitted', 'Application submitted',
+        'Gift lapsed 90 days', 'Expedition completed'])}
+      ${selectField('Audience', ['All Donors','Lapsed Donors','Past Team Members','Church Network','Recruiting Leads'])}
+      ${textareaField('Steps', { placeholder: 'Day 0 thank-you · Day 3 story · Day 14 ask' })}`,
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Journey name', 'Trigger']);
+      if (v === false) return false;
+      store.create('campaigns', {
+        name: v['Journey name'], kind: 'Journey', audience: v['Audience'], status: 'Running',
+        sent: 0, opened: 0, clicked: 0, conversions: 0, revenue: 0,
+        date: new Date().toISOString().slice(0, 10), trigger: v['Trigger']
+      });
+      toast('Journey created and running');
+      render();
+    }
+  }));
 }

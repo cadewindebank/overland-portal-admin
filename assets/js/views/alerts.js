@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, modal, toast, relative } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, modal, toast, relative,
+         textField, selectField, textareaField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function alerts(view) {
+  const render = () => alerts(view);
   const sent = D.alerts.filter(a => a.status === 'Sent');
   const openRate = sent.length ? Math.round(D.sum(sent, a => a.opened) / D.sum(sent, a => a.reach) * 100) : 0;
 
@@ -49,15 +52,31 @@ export default function alerts(view) {
   view.querySelector('#compose').addEventListener('click', () => modal({
     title: 'Compose an alert', confirm: 'Send alert', wide: true,
     body: `<div class="stack">
-      <div class="field"><label>Title</label><input placeholder="System maintenance window Saturday 02:00 UTC"></div>
+      ${textField('Title', { placeholder: 'System maintenance window Saturday 02:00 UTC' })}
       <div class="form-grid">
-        <div class="field"><label>Audience</label><select>${['All Users','Staff','Leaders','Expedition Members','Donors'].map(a => `<option>${a}</option>`).join('')}</select></div>
-        <div class="field"><label>Channel</label><select><option>Portal</option><option>Portal + Email</option><option>Email</option></select></div>
-        <div class="field"><label>Send</label><select><option>Immediately</option><option>Schedule…</option></select></div>
+        ${selectField('Audience', ['All Users','Staff','Leaders','Expedition Members','Donors'])}
+        ${selectField('Channel', ['Portal', 'Portal + Email', 'Email'])}
+        ${selectField('Send', ['Immediately', 'Schedule'])}
       </div>
-      <div class="field"><label>Message</label><textarea style="min-height:150px" placeholder="Write the notice. Keep it short — this appears in the portal alert tray."></textarea></div>
-      <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox"> Mark as urgent (pins to the top of the tray)</label>
+      ${textareaField('Message', { style: 'min-height:150px', placeholder: 'Write the notice. Keep it short — this appears in the portal alert tray.' })}
+      <label class="check"><input type="checkbox">
+        <span>Mark as urgent (pins to the top of the tray)</span></label>
     </div>`,
-    onConfirm: () => toast('Alert queued for delivery')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Title', 'Message']);
+      if (v === false) return false;
+      const audienceSize = { 'All Users': D.users.length, Staff: D.users.filter(u => u.type === 'Staff').length,
+        Leaders: 24, 'Expedition Members': D.users.filter(u => u.type === 'Expedition Member').length,
+        Donors: D.users.filter(u => u.type === 'Donor').length }[v['Audience']] || 0;
+      store.create('alerts', {
+        title: v['Title'], audience: v['Audience'], channel: v['Channel'],
+        status: v['Send'] === 'Immediately' ? 'Sent' : 'Scheduled',
+        sent: new Date().toISOString().slice(0, 16).replace('T', ' '),
+        reach: audienceSize, opened: 0, body: v['Message'],
+        urgent: !!v['Mark as urgent (pins to the top of the tray)']
+      });
+      toast(v['Send'] === 'Immediately' ? `Alert sent to ${audienceSize} people` : 'Alert scheduled');
+      render();
+    }
   }));
 }

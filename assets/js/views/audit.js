@@ -1,6 +1,7 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, relative } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, relative,
+         modal, toast, textField, selectField, readForm } from '../ui.js';
 
 export default function audit(view) {
   const denied = D.auditLog.filter(l => l.result === 'Denied');
@@ -47,11 +48,55 @@ export default function audit(view) {
       { key: 'actor', label: 'Actor', render: l => `<a href="#/people/${l.actorId}">${esc(l.actor)}</a>` },
       { key: 'action', label: 'Action', render: l => `<code style="font-size:12px">${esc(l.action)}</code>` },
       { key: 'label', label: 'Description' },
-      { key: 'target', label: 'Target' },
+      { key: 'target', label: 'Target', render: l => {
+          const t = String(l.target || '');
+          const href = t.startsWith('R') ? '#/requests/' + t
+            : t.startsWith('U') ? '#/people/' + t
+            : t.startsWith('E') ? '#/expeditions/' + t
+            : t.startsWith('C') ? '#/crm/' + t
+            : t.startsWith('D') ? '#/donations/' + t
+            : null;
+          return href ? `<a href="${href}">${esc(t)}</a>` : esc(t);
+        } },
       { key: 'ip', label: 'IP address' },
       { key: 'result', label: 'Result', render: l => badge(l.result === 'Success' ? 'Success' : 'Denied') }
     ]
   }).mount(view.querySelector('#auditTable'));
 
-  view.querySelector('#exportLog').addEventListener('click', () => dt.exportCsv());
+  view.querySelector('#exportLog').addEventListener('click', () => modal({
+    title: 'Export the audit log', confirm: 'Export',
+    body: `<div class="form-grid form-grid--2">
+        ${textField('From', { type: 'date', value: '2026-07-24' })}
+        ${textField('To', { type: 'date', value: '2026-09-07' })}
+      </div>
+      ${selectField('Result', ['All', 'Success only', 'Denied only'])}
+      <div class="notice notice--warn">Exporting the audit log is itself recorded in the audit log.</div>`,
+    onConfirm: scrim => {
+      const v = readForm(scrim);
+      const rows = D.auditLog.filter(l => {
+        const day = String(l.when).slice(0, 10);
+        if (v['From'] && day < v['From']) return false;
+        if (v['To'] && day > v['To']) return false;
+        if (v['Result'] === 'Success only' && l.result !== 'Success') return false;
+        if (v['Result'] === 'Denied only' && l.result === 'Success') return false;
+        return true;
+      });
+      if (!rows.length) {
+        scrim.querySelector('.modal__body').insertAdjacentHTML('afterbegin',
+          '<div class="notice notice--stop">No events in that range.</div>');
+        return false;
+      }
+      const head = ['Timestamp', 'Actor', 'Action', 'Description', 'Target', 'IP', 'Result'];
+      const csv = [head].concat(rows.map(l => [l.when, l.actor, l.action, l.label, l.target, l.ip, l.result]))
+        .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `audit-${v['From']}-to-${v['To']}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      toast(`${rows.length} audit events exported`);
+    }
+  }));
+  void dt;
 }

@@ -41,17 +41,66 @@ export const CAPABILITIES = [
   { id: 'system.settings',    group: 'System',       label: 'Edit system settings' }
 ];
 
-/** role -> predicate over capability id. Keep in sync with the server. */
-export const ROLE_GRANTS = {
-  'Administrator':     () => true,
-  'Finance':           id => /^(giving|finance)\./.test(id) || ['people.view','crm.view','requests.view','requests.approve','system.audit'].includes(id),
-  'Base Director':     id => /\.view$/.test(id) || ['expeditions.roster','applications.review','tasks.assign','people.compliance'].includes(id),
-  'Expedition Leader': id => ['people.view','expeditions.view','expeditions.roster','applications.review','tasks.assign','crm.view'].includes(id),
-  'Donor Relations':   id => ['crm.view','crm.edit','crm.marketing','giving.view','giving.publish','people.view'].includes(id),
-  'Media':             id => /\.view$/.test(id),
-  'Staff':             id => ['people.view','expeditions.view','crm.view','requests.view'].includes(id),
-  'Read Only':         id => ['people.view','expeditions.view'].includes(id)
+/* role -> the exact capabilities it grants.
+   Explicit sets, deliberately not patterns: an earlier version matched by
+   regex substring and silently granted Media the audit log, donations and
+   compliance documents. Every grant here is written out and reviewable. */
+const GRANTS = {
+  'Administrator': CAPABILITIES.map(c => c.id),
+
+  'Finance': [
+    'people.view', 'people.compliance',
+    'crm.view',
+    'expeditions.view',
+    'giving.view', 'giving.refund', 'giving.publish', 'giving.export',
+    'finance.view', 'finance.authorize', 'finance.payroll',
+    'requests.view', 'requests.approve', 'tasks.assign',
+    'system.audit'
+  ],
+
+  'Base Director': [
+    'people.view', 'people.edit', 'people.compliance',
+    'crm.view',
+    'expeditions.view', 'expeditions.roster', 'expeditions.admin', 'applications.review',
+    'giving.view',
+    'requests.view', 'tasks.assign'
+  ],
+
+  'Expedition Leader': [
+    'people.view',
+    'crm.view',
+    'expeditions.view', 'expeditions.roster', 'applications.review',
+    'requests.view', 'tasks.assign'
+  ],
+
+  'Donor Relations': [
+    'people.view',
+    'crm.view', 'crm.edit', 'crm.marketing',
+    'giving.view', 'giving.publish'
+  ],
+
+  'Media': [
+    'people.view',
+    'crm.view', 'crm.marketing',
+    'expeditions.view'
+  ],
+
+  'Staff': [
+    'people.view', 'crm.view', 'expeditions.view', 'requests.view'
+  ],
+
+  'Read Only': [
+    'people.view', 'expeditions.view'
+  ]
 };
+
+/** role -> predicate over capability id. Keep in sync with the server. */
+export const ROLE_GRANTS = Object.fromEntries(
+  Object.entries(GRANTS).map(([role, ids]) => {
+    const set = new Set(ids);
+    return [role, id => set.has(id)];
+  })
+);
 
 export const ROLES = Object.keys(ROLE_GRANTS);
 

@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, toast, modal, relative } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, dateTime, stat, num, toast, modal, relative,
+         selectField } from '../ui.js';
+import * as store from '../store.js';
 
 export default function security(view) {
+  const render = () => security(view);
   const no2fa = D.users.filter(u => !u.twoFactor && u.type === 'Staff');
   const elevated = D.users.filter(u => ['Administrator', 'Finance'].includes(u.role));
   const elevatedNo2fa = elevated.filter(u => !u.twoFactor);
@@ -77,20 +80,56 @@ export default function security(view) {
   }).mount(view.querySelector('#sessTable'));
 
   view.addEventListener('click', e => {
-    if (e.target.closest('[data-revoke]')) toast('Session revoked — the device must sign in again');
-    if (e.target.closest('[data-nudge]')) toast('Two-factor enrolment required at next sign-in');
-    if (e.target.id === 'editPolicy') toast('Policy editor opened');
+    const rev = e.target.closest('[data-revoke]');
+    if (rev) {
+      store.remove('sessions', rev.dataset.revoke);
+      toast('Session revoked — the device must sign in again');
+      return render();
+    }
+    const nudge = e.target.closest('[data-nudge]');
+    if (nudge) {
+      store.update('users', nudge.dataset.nudge, { twoFactorRequired: true });
+      toast('Two-factor enrolment required at next sign-in');
+      return render();
+    }
+    if (e.target.id === 'editPolicy') editPolicy();
   });
+
+  function editPolicy() {
+    modal({
+      title: 'Security policy', confirm: 'Save policy', wide: true,
+      body: `<div class="form-grid form-grid--2">
+          ${selectField('Session lifetime', ['4 hours of inactivity', '12 hours of inactivity', '7 days'], { value: '12 hours of inactivity' })}
+          ${selectField('Two-factor requirement', ['Everyone', 'Administrator and Finance', 'Optional'], { value: 'Administrator and Finance' })}
+          ${selectField('Minimum password length', ['8', '12', '16'], { value: '12' })}
+          ${selectField('New-device notification', ['Email the account holder', 'Email security team', 'Off'], { value: 'Email the account holder' })}
+        </div>
+        <label class="check"><input type="checkbox" checked><span>Write every CSV export to the audit log</span></label>
+        <label class="check"><input type="checkbox" checked><span>Breach-check passwords against known lists</span></label>
+        <div class="notice notice--warn">These settings shape the interface. The server must enforce
+          the same policy — see docs/SECURITY.md.</div>`,
+      onConfirm: () => { toast('Security policy saved'); }
+    });
+  }
   view.querySelector('#enforce').addEventListener('click', () => modal({
     title: 'Enforce two-factor for privileged roles', confirm: 'Enforce',
     body: `<p style="margin-top:0">${elevated.length} accounts hold Administrator or Finance roles. ${elevatedNo2fa.length} of them have no second factor.</p>
       <p class="muted">Enforcing will require enrolment at their next sign-in. They will not be locked out.</p>`,
-    onConfirm: () => toast('Two-factor enforcement enabled for privileged roles')
+    onConfirm: () => {
+      store.updateMany('users', elevatedNo2fa.map(u => u.id), { twoFactorRequired: true });
+      toast(`${elevatedNo2fa.length} privileged accounts must enrol at next sign-in`);
+      render();
+    }
   }));
   view.querySelector('#revokeAll').addEventListener('click', () => modal({
     title: 'Revoke all sessions', confirm: 'Revoke everything',
     body: `<p style="margin-top:0">This signs out <strong>${D.sessions.length} devices</strong> across every account, including your own.</p>
       <p class="muted">Use this after a credential compromise. Everyone will need to sign in again.</p>`,
-    onConfirm: () => toast('All sessions revoked')
+    onConfirm: () => {
+      const n = D.sessions.length;
+      [...D.sessions].forEach(s => store.remove('sessions', s.id));
+      toast(`${n} sessions revoked`);
+      render();
+    }
   }));
 }

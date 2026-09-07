@@ -1,6 +1,8 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, shortDate, stat, num, modal, toast,
+         field, textField, selectField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
 
 const GUIDES = [
   ['Brand Guide', 'Logos, colour, type and how the Overland mark may be used.', 'image', '#/media?collection=Brand%20Guide'],
@@ -10,7 +12,8 @@ const GUIDES = [
   ['Cybersecurity Policy', 'Policies, tips and how-to guides for staff devices.', 'shield', '#/security']
 ];
 
-export default function media(view) {
+export default function media(view, { query } = {}) {
+  const render = () => media(view, { query });
   view.innerHTML = `
     ${pageHead({
       title: 'Media Library',
@@ -38,8 +41,11 @@ export default function media(view) {
 
     <div id="mediaTable"></div>`;
 
+  const wanted = query && query.get && query.get('collection');
   new DataTable({
-    title: 'Media assets', rows: D.mediaAssets, pageSize: 15, sortKey: 'uploaded', sortDir: 'desc',
+    title: 'Media assets',
+    rows: wanted ? D.mediaAssets.filter(m => m.collection === wanted) : D.mediaAssets,
+    pageSize: 15, sortKey: 'uploaded', sortDir: 'desc',
     columns: [
       { key: 'name', label: 'Asset', render: m => `<span style="display:flex;align-items:center;gap:9px">${icon(m.kind === 'Video' ? 'camera' : m.kind === 'Document' ? 'file' : 'image')}<span>${esc(m.name)}</span></span>` },
       { key: 'kind', label: 'Type' },
@@ -48,20 +54,63 @@ export default function media(view) {
       { key: 'license', label: 'Licence', render: m => badge(m.license === 'Restricted' ? 'Denied' : m.license === 'Public' ? 'Approved' : 'Draft', m.license === 'Restricted' ? 'denied' : m.license === 'Public' ? 'approved' : 'draft') },
       { key: 'by', label: 'Uploaded by' },
       { key: 'uploaded', label: 'Uploaded', render: m => shortDate(m.uploaded) },
-      { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Download</button>` }
+      { key: 'act', label: '', sortable: false, filter: false,
+        render: m => `<button class="btn-mini" data-get="${m.id}">Download</button>` }
     ]
   }).mount(view.querySelector('#mediaTable'));
 
   view.querySelector('#upload').addEventListener('click', () => modal({
     title: 'Upload assets', confirm: 'Upload',
     body: `<div class="stack">
-      <div class="field"><label>Files</label><input type="file" multiple></div>
-      <div class="field"><label>Collection</label><select>${[...new Set(D.mediaAssets.map(m => m.collection))].map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
-      <div class="field"><label>Licence</label><select><option>Internal</option><option>Public</option><option>Restricted</option></select></div>
-      <div class="field"><label>Caption / credit</label><input placeholder="Who took it and where"></div>
-      <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox"> Photo consent on file for identifiable people</label>
+      ${field('Files', id => `<input id="${id}" type="file" multiple>`)}
+      ${selectField('Collection', [...new Set(D.mediaAssets.map(m => m.collection))])}
+      ${selectField('Licence', ['Internal', 'Public', 'Restricted'])}
+      ${textField('Caption / credit', { placeholder: 'Who took it and where' })}
+      <label class="check"><input type="checkbox">
+        <span>Photo consent on file for identifiable people</span></label>
     </div>`,
-    onConfirm: () => toast('Assets queued for upload')
+    onConfirm: scrim => {
+      const v = readForm(scrim);
+      store.create('mediaAssets', {
+        name: (v['Caption / credit'] || 'Untitled asset').replace(/\s+/g, '_').slice(0, 40),
+        kind: 'Photo', collection: v['Collection'], size: '\u2014',
+        license: v['Licence'], uploaded: new Date().toISOString().slice(0, 10), by: 'You'
+      });
+      toast('Asset added to the library');
+      render();
+    }
   }));
-  view.querySelector('#newCol').addEventListener('click', () => toast('Collection created'));
+  view.querySelector('#mediaTable').addEventListener('click', e => {
+    const b = e.target.closest('[data-get]');
+    if (!b) return;
+    const m = D.mediaAssets.find(x => String(x.id) === b.dataset.get);
+    if (m.license === 'Restricted') {
+      return modal({
+        title: 'Restricted asset', confirm: 'Download anyway',
+        body: `<div class="notice notice--stop">${esc(m.name)} is marked <strong>Restricted</strong>.
+          Confirm you have consent from everyone identifiable in it before using it.</div>
+          <label class="check"><input type="checkbox" id="consent"><span>Consent is on file</span></label>`,
+        onConfirm: scrim => {
+          if (!scrim.querySelector('#consent').checked) {
+            if (!scrim.querySelector('.field__error'))
+              scrim.querySelector('.modal__body').insertAdjacentHTML('beforeend',
+                '<div class="field__error">Tick the box to confirm consent.</div>');
+            return false;
+          }
+          toast(`${m.name} downloaded — access logged`);
+        }
+      });
+    }
+    toast(`${m.name} downloaded`);
+  });
+
+  view.querySelector('#newCol').addEventListener('click', () => modal({
+    title: 'New collection', confirm: 'Create collection',
+    body: textField('Collection name', { placeholder: 'Zambia 2027' }),
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Collection name']);
+      if (v === false) return false;
+      toast('Collection created: ' + v['Collection name']);
+    }
+  }));
 }

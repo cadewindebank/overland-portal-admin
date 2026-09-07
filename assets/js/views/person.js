@@ -17,6 +17,24 @@ export default function person(view, { params }) {
   const owned = D.contacts.filter(c => c.owner === u.name);
   const supporters = D.donations.filter(d => d.designation === u.name);
 
+  /* Onboarding arc, from the staff-onboarding journey. Each step is derived
+     from real record state, so it cannot drift out of sync with the data. */
+  const steps = [
+    ['Account created',    true,                                    null],
+    ['Signed in',          !!u.lastLogin,                           null],
+    ['Two-factor enabled', !!u.twoFactor,                           '#/security'],
+    ['Personal info',      u.phone && u.city !== '\u2014',              null],
+    ['Passport on file',   !!u.passportExpiry,                      null],
+    ['Insurance current',  u.insurance === 'Current',               null],
+    ['Emergency contact',  true,                                    null],
+    ['Base & department',  u.department !== 'Unassigned' && u.department !== '\u2014', null],
+    ['Groups joined',      !!(u.groups && u.groups.length),         '#/general-admin?tab=Groups'],
+    ['MPD coach assigned', !!mpd,                                   '#/mpd'],
+    ['Donation page live', !!(page && page.status === 'Live'),      '#/donation-pages']
+  ].filter(x => u.type === 'Staff' || !['MPD coach assigned', 'Donation page live', 'Groups joined'].includes(x[0]));
+  const done = steps.filter(x => x[1]).length;
+  const pctDone = Math.round(done / steps.length * 100);
+
   view.innerHTML = `
     ${pageHead({
       crumbs: [{ label: 'People', href: '#/people' }, { label: u.name }],
@@ -68,6 +86,28 @@ export default function person(view, { params }) {
           <div class="row" style="margin-top:14px">
             <button class="btn-mini" id="reqDocs">${icon('bell')} Request missing documents</button>
           </div>`, { title: 'Compliance', icon: 'shield' })}
+
+        ${done < steps.length ? card(`
+          <div class="row row--between" style="margin-bottom:8px">
+            <strong>${done} of ${steps.length} complete</strong>
+            <span class="muted">${pctDone}%</span>
+          </div>
+          ${progress(pctDone, pctDone === 100)}
+          <ul class="timeline" style="margin-top:10px">
+            ${steps.map(([label, ok, href]) => `<li>
+              <span class="timeline__icon" style="border-color:${ok ? 'var(--emerald-pine)' : 'var(--line-strong)'}">
+                ${icon(ok ? 'checkCircle' : 'clock')}</span>
+              <div class="timeline__body" style="${ok ? 'color:var(--text-muted)' : 'font-weight:500'}">
+                ${esc(label)}</div>
+              ${!ok && href ? `<a class="btn-mini" href="${href}">Fix</a>` : ''}
+              ${ok ? '<span class="timeline__when" style="color:var(--emerald-pine)">done</span>' : ''}
+            </li>`).join('')}
+          </ul>
+          <button class="btn-mini w-100" style="margin-top:12px;justify-content:center" id="nudgeOnboard">
+            ${icon('bell')} Send onboarding reminder</button>`,
+          { title: 'Onboarding', icon: 'clipboard' })
+        : card(`<div class="notice notice--go" style="margin:0">Onboarding complete \u2014 all ${steps.length} steps done.</div>`,
+          { title: 'Onboarding', icon: 'checkCircle' })}
 
         ${mpd ? card(`
           ${deflist([
@@ -289,5 +329,26 @@ export default function person(view, { params }) {
   }));
   view.querySelector('#resetPw').addEventListener('click', () => toast('Password reset email sent to ' + u.email));
   view.querySelector('#impersonate').addEventListener('click', () => toast('Read-only impersonation session started (logged to audit)'));
-  view.querySelector('#reqDocs').addEventListener('click', () => toast('Document request sent to ' + u.name));
+  view.querySelector('#reqDocs').addEventListener('click', () => {
+    const missing = [!u.passportExpiry && 'passport', u.insurance !== 'Current' && 'insurance',
+      !u.twoFactor && 'two-factor enrolment'].filter(Boolean);
+    if (!missing.length) return toast('Nothing outstanding for ' + u.name);
+    store.create('tasks', {
+      title: `Chase ${missing.join(', ')} from ${u.name}`,
+      assignee: 'People & Care', related: u.department,
+      due: '2026-09-21', overdue: false, priority: 'High', status: 'Open'
+    });
+    toast(`Requested ${missing.join(', ')} from ${u.name}`);
+  });
+
+  const nudge = view.querySelector('#nudgeOnboard');
+  if (nudge) nudge.addEventListener('click', () => {
+    const outstanding = steps.filter(x => !x[1]).map(x => x[0]);
+    store.create('tasks', {
+      title: `Onboarding follow-up: ${u.name}`, assignee: 'People & Care',
+      related: u.department, due: '2026-09-21', overdue: false,
+      priority: 'Normal', status: 'Open', notes: outstanding.join(', ')
+    });
+    toast(`Reminder sent — ${outstanding.length} steps outstanding`);
+  });
 }

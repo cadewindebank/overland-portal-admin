@@ -1,6 +1,6 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, esc, toast, badge, num, deflist } from '../ui.js';
+import { pageHead, card, esc, toast, badge, num, deflist, textField, selectField } from '../ui.js';
 
 export default function settings(view) {
   view.innerHTML = `
@@ -14,12 +14,12 @@ export default function settings(view) {
       <div class="stack">
         ${card(`
           <div class="form-grid form-grid--2">
-            <div class="field span-2"><label>Organisation name</label><input value="Overland Missions"></div>
-            <div class="field span-2"><label>Portal URL</label><input value="portal.overlandmissions.com"></div>
-            <div class="field"><label>Support email</label><input value="support@example.org"></div>
-            <div class="field"><label>Default timezone</label><select><option>UTC</option><option selected>America/New_York</option><option>Africa/Lusaka</option></select></div>
-            <div class="field"><label>Fiscal year start</label><select><option>January</option><option selected>October</option></select></div>
-            <div class="field"><label>Default currency</label><select><option>USD</option></select></div>
+            ${textField('Organisation name', { value: 'Overland Missions', span: 2 })}
+            ${textField('Portal URL', { value: 'portal.overlandmissions.com', span: 2 })}
+            ${textField('Support email', { value: 'support@example.org', type: 'email' })}
+            ${selectField('Default timezone', ['UTC', 'America/New_York', 'Africa/Lusaka'], { value: 'America/New_York' })}
+            ${selectField('Fiscal year start', ['January', 'October'], { value: 'October' })}
+            ${selectField('Default currency', ['USD'])}
           </div>`, { title: 'Organisation', icon: 'settings' })}
 
         ${card(`
@@ -50,7 +50,8 @@ export default function settings(view) {
             <div class="row row--between" style="padding:10px 0;border-bottom:1px solid var(--line);gap:12px">
               <span style="display:flex;align-items:center;gap:9px;min-width:0">
                 <span style="color:var(--slate);display:inline-flex">${icon(t.icon)}</span>${esc(t.label)}</span>
-              <select style="max-width:180px">${['Finance','Media','Operations','People & Care','Leadership'].map(q =>
+              <select data-route="${esc(t.key)}" style="max-width:180px"
+                aria-label="Routing queue for ${esc(t.label)}">${['Finance','Media','Operations','People & Care','Leadership'].map(q =>
                 `<option${q === t.queue ? ' selected' : ''}>${q}</option>`).join('')}</select>
             </div>`).join('')}`, { title: 'Form routing', icon: 'inbox' })}
 
@@ -84,5 +85,25 @@ export default function settings(view) {
       </div>
     </div>`;
 
-  view.querySelector('#save').addEventListener('click', () => toast('Settings saved'));
+  view.querySelector('#save').addEventListener('click', () => {
+    const values = {};
+    view.querySelectorAll('input, select').forEach(el => {
+      const label = el.labels && el.labels[0] ? el.labels[0].textContent.trim() : el.id;
+      if (label) values[label] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    try { localStorage.setItem('om.portal.settings', JSON.stringify(values)); } catch (_) {}
+    const routed = view.querySelectorAll('[data-route]').length;
+    toast(`Settings saved — ${routed} form routes and ${Object.keys(values).length} fields`);
+  });
+
+  // restore anything saved previously
+  try {
+    const saved = JSON.parse(localStorage.getItem('om.portal.settings') || '{}');
+    view.querySelectorAll('input, select').forEach(el => {
+      const label = el.labels && el.labels[0] ? el.labels[0].textContent.trim() : el.id;
+      if (label && saved[label] !== undefined) {
+        if (el.type === 'checkbox') el.checked = saved[label]; else el.value = saved[label];
+      }
+    });
+  } catch (_) {}
 }

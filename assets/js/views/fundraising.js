@@ -1,9 +1,12 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, usd, shortDate, stat, num, progress, barChart, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, usd, shortDate, stat, num, progress, barChart, modal, toast,
+         selectField, textField, textareaField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
 import { stageKind } from './crm.js';
 
 export default function fundraising(view) {
+  const render = () => fundraising(view);
   const lapsed = D.lapsedDonors();
   const givers = D.contacts.filter(c => c.lifetime > 0);
   const goalTotal = D.sum(D.mpders, m => m.monthlyGoal);
@@ -62,7 +65,8 @@ export default function fundraising(view) {
         { key: 'recurring', label: 'Was recurring', className: 'center', value: c => c.recurring ? 'Yes' : 'No',
           render: c => c.recurring ? badge('Active') : '—' },
         { key: 'score', label: 'Score', className: 'num' },
-        { key: 'act', label: '', sortable: false, filter: false, render: () => `<button class="btn-mini">Add to campaign</button>` }
+        { key: 'act', label: '', sortable: false, filter: false,
+          render: c => `<button class="btn-mini" data-camp="${c.id}">Add to campaign</button>` }
       ]
     }),
     'Lead scoring': () => ({
@@ -111,7 +115,38 @@ export default function fundraising(view) {
     })
   };
 
-  const build = name => new DataTable(Object.assign({ pageSize: 15 }, TABLES[name]())).mount(view.querySelector('#fundTable'));
+  let table = null;
+  const build = name => {
+    table = new DataTable(Object.assign({ pageSize: 15 }, TABLES[name]()));
+    table.mount(view.querySelector('#fundTable'));
+  };
+  view.querySelector('#fundTable').addEventListener('click', e => {
+    const b = e.target.closest('[data-camp]');
+    if (!b) return;
+    const c = D.findContact(b.dataset.camp);
+    modal({
+      title: `Add ${c.name} to a campaign`, confirm: 'Add to campaign',
+      body: selectField('Campaign', D.campaigns.filter(x => x.status !== 'Sent').map(x => x.name)
+        .concat(['— create a new re-engagement campaign —'])),
+      onConfirm: scrim => {
+        const pick = readForm(scrim)['Campaign'];
+        if (pick.startsWith('—')) {
+          const camp = store.create('campaigns', {
+            name: 'Lapsed donor re-engagement', kind: 'Campaign', audience: 'Lapsed Donors',
+            status: 'Draft', sent: 0, opened: 0, clicked: 0, conversions: 0, revenue: 0,
+            date: new Date().toISOString().slice(0, 10), members: [c.id]
+          });
+          toast(`Created “${camp.name}” with ${c.name} in it`);
+        } else {
+          const camp = D.campaigns.find(x => x.name === pick);
+          store.update('campaigns', camp.id, { members: [...(camp.members || []), c.id] });
+          toast(`${c.name} added to ${pick}`);
+        }
+        store.update('contacts', c.id, { stage: 'Contacted' }, { silent: true });
+        render();
+      }
+    });
+  });
   build('Lapsed donors');
   view.querySelector('#tabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]');
@@ -123,15 +158,28 @@ export default function fundraising(view) {
   view.querySelector('#planMpd').addEventListener('click', () => modal({
     title: 'Plan MPD', confirm: 'Save plan', wide: true,
     body: `<div class="form-grid">
-      <div class="field"><label>MPDer</label><select>${D.mpders.slice(0, 40).map(m => `<option>${esc(m.name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Monthly goal (USD)</label><input type="number" value="4200"></div>
-      <div class="field"><label>Target date</label><input type="date"></div>
-      <div class="field"><label>Appointments / week</label><input type="number" value="8"></div>
-      <div class="field"><label>Asks / week</label><input type="number" value="5"></div>
-      <div class="field"><label>Coach</label><select>${D.users.slice(0, 12).map(u => `<option>${esc(u.name)}</option>`).join('')}</select></div>
-      <div class="field span-3"><label>Plan notes</label><textarea placeholder="Who they are asking, in what order, and by when."></textarea></div>
+      ${selectField('MPDer', D.mpders.slice(0, 60).map(m => m.name))}
+      ${textField('Monthly goal (USD)', { type: 'number', value: 4200 })}
+      ${textField('Target date', { type: 'date' })}
+      ${textField('Appointments / week', { type: 'number', value: 8 })}
+      ${textField('Asks / week', { type: 'number', value: 5 })}
+      ${selectField('Coach', D.users.slice(0, 12).map(u => u.name))}
+      ${textareaField('Plan notes', { placeholder: 'Who they are asking, in what order, and by when.', span: 3 })}
     </div>`,
-    onConfirm: () => toast('MPD plan saved')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Monthly goal (USD)']);
+      if (v === false) return false;
+      const m = D.mpders.find(x => x.name === v['MPDer']);
+      if (m) store.update('mpders', m.id, {
+        monthlyGoal: Number(v['Monthly goal (USD)']),
+        coach: v['Coach'],
+        pct: Math.min(140, Math.round((m.monthlyRaised / Number(v['Monthly goal (USD)'])) * 100)),
+        plan: { targetDate: v['Target date'], appointments: v['Appointments / week'],
+                asks: v['Asks / week'], notes: v['Plan notes'] }
+      });
+      toast('MPD plan saved for ' + v['MPDer']);
+      render();
+    }
   }));
   view.querySelector('#newPage').addEventListener('click', () => { location.hash = '#/donation-pages'; });
   void progress;

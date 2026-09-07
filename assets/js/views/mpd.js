@@ -1,8 +1,10 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
 import { pageHead, card, DataTable, badge, esc, usd, usd0, shortDate, dateTime, stat, num, modal, toast } from '../ui.js';
+import * as store from '../store.js';
 
 export default function mpd(view) {
+  const render = () => mpd(view);
   const pending = D.pendingFunds();
   const atRisk = D.mpders.filter(m => m.phase === 'At Risk' || m.pct < 60);
   const coaches = {};
@@ -137,7 +139,7 @@ export default function mpd(view) {
         </ul>`, { title: 'Summary', icon: 'chart',
           actions: '<button class="btn-mini" id="exportRep">Export</button>' })}
       </div>`;
-      body.querySelector('#exportRep')?.addEventListener('click', () => toast('MPD report exported'));
+      /* delegated on `body` above so it survives tab re-renders */
     }
   };
   tabs['Funds requests']();
@@ -147,13 +149,59 @@ export default function mpd(view) {
     view.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('is-active', x === b));
     tabs[b.dataset.tab]();
   });
-  body.addEventListener('click', e => { if (e.target.closest('[data-ok]')) toast('Funds request approved'); });
+  body.addEventListener('click', e => {
+    const ok = e.target.closest('[data-ok]');
+    if (ok) {
+      const fr = D.fundsRequests.find(x => String(x.id) === ok.dataset.ok);
+      if (fr.available < fr.requested) {
+        return modal({
+          title: 'Approve over available balance?', confirm: 'Approve anyway',
+          body: `<div class="notice notice--stop">${esc(fr.mpder)} has ${usd(fr.available)} available but
+            requested ${usd(fr.requested)} — approving puts the account
+            ${usd(fr.requested - fr.available)} into deficit.</div>`,
+          onConfirm: () => { store.update('fundsRequests', fr.id, { status: 'Approved' });
+            toast('Funds request approved'); render(); }
+        });
+      }
+      store.update('fundsRequests', fr.id, { status: 'Approved' });
+      toast('Funds request approved');
+      return render();
+    }
+    const ex = e.target.closest('#exportRep');
+    if (ex) exportReport();
+  });
 
-  view.querySelector('#audit').addEventListener('click', () => toast('MPD audit queued — results in the Audit tab'));
+  function exportReport() {
+    const rows = [['MPDer','Coach','Phase','Monthly goal','Raised','Funded %','Partners','Lapsed']]
+      .concat(D.mpders.map(m => [m.name, m.coach, m.phase, m.monthlyGoal, Math.round(m.monthlyRaised), m.pct, m.partners, m.lapsedPartners]));
+    const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mpd-report.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast('MPD report exported');
+  }
+
+  view.querySelector('#audit').addEventListener('click', () => {
+    const flagged = D.mpders.filter(m => m.pct < 60 || m.lapsedPartners > 5 || m.appointments < 4);
+    flagged.slice(0, 10).forEach(m => store.create('tasks', {
+      title: `MPD coaching check-in with ${m.name}`, assignee: m.coach, related: 'MPD',
+      due: '2026-09-21', overdue: false, priority: m.pct < 40 ? 'Urgent' : 'High', status: 'Open'
+    }, { silent: true }));
+    toast(`Audit complete — ${flagged.length} accounts flagged, ${Math.min(10, flagged.length)} coaching tasks raised`);
+    render();
+  });
   view.querySelector('#approveAll').addEventListener('click', () => modal({
     title: 'Approve the MPD pay run', confirm: 'Approve pay run',
     body: `<p style="margin-top:0">${pending.length} pending requests totalling <strong>${usd0(D.sum(pending, r => r.requested))}</strong>.</p>
       <p class="muted">${D.fundsRequests.filter(r => r.available < r.requested).length} of them exceed the requester's available balance and will be held back.</p>`,
-    onConfirm: () => toast('Pay run approved')
+    onConfirm: () => {
+      const payable = pending.filter(r => r.available >= r.requested);
+      const held = pending.filter(r => r.available < r.requested);
+      store.updateMany('fundsRequests', payable.map(r => r.id), { status: 'Approved' });
+      toast(`${payable.length} approved${held.length ? `, ${held.length} held over available balance` : ''}`);
+      render();
+    }
   }));
 }

@@ -1,10 +1,13 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, progress, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, shortDate, stat, num, progress, modal, toast,
+         textField, selectField, textareaField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 /* AMT — Advanced Mission Training. In the mind map AMT sits alongside
    Expeditions with its own trips, tasks, resources, management and admin. */
 export default function amt(view) {
+  const render = () => amt(view);
   const amtTrips = D.expeditions.filter(e => /AMT/i.test(e.name));
   const amtApps = D.applications.filter(a => a.amt === 'Yes');
   const cohortSize = D.sum(amtTrips, e => e.roster.length);
@@ -13,7 +16,7 @@ export default function amt(view) {
     ${pageHead({
       title: 'AMT',
       sub: 'Advanced Mission Training — cohorts, their trips, costs, travel booking and readiness.',
-      actions: `<a class="btn-mini" href="#/applications?amt=1">${icon('clipboard')} AMT applicants</a>
+      actions: `<a class="btn-mini" href="#/applications?amt=Yes">${icon('clipboard')} AMT applicants</a>
                 <button class="btn" id="newCohort">New cohort</button>`
     })}
 
@@ -115,10 +118,43 @@ export default function amt(view) {
           render: m => m.flight ? badge('Approved', 'approved') : badge('Pending') },
         { key: 'insurance', label: 'Insurance', className: 'center', value: m => m.insurance ? 'Yes' : 'No', render: m => tick(m.insurance) },
         { key: 'act', label: '', sortable: false, filter: false,
-          render: m => m.flight ? `<button class="btn-mini">Itinerary</button>` : `<button class="btn-mini btn-mini--go">Book</button>` }
+          render: m => `<button class="btn-mini${m.flight ? '' : ' btn-mini--go'}" data-travel="${m.expeditionId}:${m.userId}">${
+            m.flight ? 'Itinerary' : 'Book'}</button>` }
       ]
     })
   };
+  body.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-travel]');
+    if (!b) return;
+    const [eid, uid] = b.dataset.travel.split(':');
+    const e = D.findExpedition(eid);
+    const m = e && e.roster.find(x => x.userId === uid);
+    if (!m) return;
+    modal({
+      title: `${m.flight ? 'Itinerary' : 'Book travel'} — ${m.name}`,
+      confirm: m.flight ? 'Update itinerary' : 'Book flight',
+      body: `<p style="margin-top:0" class="muted">${esc(e.name)} · departs ${shortDate(e.start)}</p>
+        <div class="form-grid form-grid--2">
+          ${textField('Airline / record locator', { value: m.pnr || '', placeholder: 'ET / 4KX9QP' })}
+          ${textField('Outbound', { type: 'date', value: m.outbound || e.start })}
+          ${textField('Return', { type: 'date', value: m.inbound || e.end })}
+          ${textField('Cost', { type: 'number', value: m.flightCost || '' })}
+        </div>
+        ${textareaField('Notes', { placeholder: 'Seat requests, visa timing, connections.' })}
+        ${m.passport ? '' : '<div class="notice notice--warn">No passport on file for this student — booking without one is risky.</div>'}`,
+      onConfirm: scrim => {
+        const v = requireFields(scrim, ['Airline / record locator', 'Outbound']);
+        if (v === false) return false;
+        const roster = e.roster.map(x => x.userId === uid ? { ...x, flight: true,
+          pnr: v['Airline / record locator'], outbound: v['Outbound'],
+          inbound: v['Return'], flightCost: Number(v['Cost']) || 0 } : x);
+        store.update('expeditions', e.id, { roster });
+        toast(`Travel ${m.flight ? 'updated' : 'booked'} for ${m.name}`);
+        render();
+      }
+    });
+  });
+
   tabs.Students();
   view.querySelector('#tabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]');
@@ -130,13 +166,28 @@ export default function amt(view) {
   view.querySelector('#newCohort').addEventListener('click', () => modal({
     title: 'New AMT cohort', confirm: 'Create cohort',
     body: `<div class="form-grid form-grid--2">
-      <div class="field span-2"><label>Cohort name</label><input placeholder="2027 AMT Zambia January"></div>
-      <div class="field"><label>Country</label><input placeholder="Zambia"></div>
-      <div class="field"><label>Start date</label><input type="date"></div>
-      <div class="field"><label>Length (days)</label><input type="number" value="90"></div>
-      <div class="field"><label>Cost per student</label><input type="number" value="7100"></div>
+      ${textField('Cohort name', { placeholder: '2027 AMT Zambia January', span: 2 })}
+      ${textField('Country', { placeholder: 'Zambia' })}
+      ${textField('Start date', { type: 'date' })}
+      ${textField('Length (days)', { type: 'number', value: 90 })}
+      ${textField('Cost per student', { type: 'number', value: 7100 })}
     </div>`,
-    onConfirm: () => toast('AMT cohort created')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Cohort name', 'Country', 'Start date']);
+      if (v === false) return false;
+      const days = Number(v['Length (days)']) || 90;
+      const start = new Date(v['Start date'] + 'T00:00:00');
+      store.create('expeditions', {
+        code: (v['Country'] || 'AMT').slice(0, 3).toUpperCase() + '-' + v['Start date'].slice(0, 4),
+        name: v['Cohort name'], country: v['Country'], sector: 'Global',
+        start: v['Start date'], end: new Date(start.getTime() + days * 86400000).toISOString().slice(0, 10),
+        days, cost: Number(v['Cost per student']) || 0, capacity: 20,
+        status: 'Open', daysOut: Math.round((start - new Date('2026-09-07')) / 86400000),
+        leader: '\u2014', roster: [], raised: 0, goal: 0, pct: 0, resources: []
+      });
+      toast('AMT cohort created');
+      render();
+    }
   }));
 }
 

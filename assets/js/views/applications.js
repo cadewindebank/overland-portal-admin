@@ -5,12 +5,16 @@ import * as store from '../store.js';
 
 export default function applications(view, { query } = {}) {
   const render = () => applications(view, { query });
-  const open = D.openApplications();
+  const amtOnly = query && query.get && query.get('amt');
+  let open = D.openApplications();
+  if (amtOnly) open = open.filter(a => a.amt === amtOnly);
 
   view.innerHTML = `
     ${pageHead({
       title: 'Expedition Applications',
-      sub: 'Applications waiting on a reference, a background check, an interview or a decision.',
+      sub: amtOnly
+        ? 'AMT applicants waiting on a reference, a background check, an interview or a decision.'
+        : 'Applications waiting on a reference, a background check, an interview or a decision.',
       actions: `<button class="btn-mini" id="bulkRef">${icon('bell')} Chase references</button>
                 <button class="btn" id="exportApps">Export</button>`
     })}

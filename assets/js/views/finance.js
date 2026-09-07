@@ -74,7 +74,9 @@ export default function finance(view, { query }) {
         { key: 'runDate', label: 'Run date', render: p => shortDate(p.runDate) },
         { key: 'status', label: 'Status', render: p => badge(p.status) },
         { key: 'act', label: '', sortable: false, filter: false,
-          render: p => p.status === 'Paid' ? `<button class="btn-mini">Register</button>` : `<button class="btn-mini btn-mini--go" data-run="${p.id}">Review & run</button>` }
+          render: p => p.status === 'Paid'
+            ? `<button class="btn-mini" data-register="${p.id}">Register</button>`
+            : `<button class="btn-mini btn-mini--go" data-run="${p.id}">Review &amp; run</button>` }
       ]
     }),
     MPL: () => {
@@ -232,6 +234,19 @@ export default function finance(view, { query }) {
     }
     const run = e.target.closest('[data-run]');
     if (run) return openPayroll(run.dataset.run);
+    const reg = e.target.closest('[data-register]');
+    if (reg) {
+      const p = D.payrollRuns.find(x => String(x.id) === reg.dataset.register);
+      const rows = [['Period', 'People', 'Gross', 'Withholding', 'Net', 'Run date'],
+        [p.period, p.people, p.gross.toFixed(2), p.taxes.toFixed(2), p.net.toFixed(2), p.runDate]];
+      const blob = new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `payroll-register-${p.period.replace(/\W+/g, '-').toLowerCase()}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      toast(`${p.period} payroll register downloaded`);
+    }
   });
 
   /* --- receipt generation — previously impossible anywhere in the portal --- */

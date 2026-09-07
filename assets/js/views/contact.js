@@ -1,9 +1,12 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, deflist, badge, esc, avatar, usd, usd0, shortDate, DataTable, modal, toast, relative, num } from '../ui.js';
+import { pageHead, card, deflist, badge, esc, avatar, usd, usd0, shortDate, DataTable, modal, toast, relative, num,
+         textField, selectField, textareaField, requireFields, readForm } from '../ui.js';
+import * as store from '../store.js';
 import { stageKind } from './crm.js';
 
 export default function contact(view, { params }) {
+  const render = () => contact(view, { params });
   const c = D.findContact(params[0]);
   if (!c) { view.innerHTML = `<div class="card">${esc('No such contact: ' + params[0])}</div>`; return; }
 
@@ -100,20 +103,70 @@ export default function contact(view, { params }) {
 
   view.querySelector('#note').addEventListener('click', () => modal({
     title: 'Add a note', confirm: 'Save note',
-    body: `<div class="field"><label>Note</label><textarea style="min-height:130px"></textarea></div>`,
-    onConfirm: () => toast('Note added to the activity log')
+    body: textareaField('Note', { style: 'min-height:130px' }),
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Note']);
+      if (v === false) return false;
+      store.update('contacts', c.id, {
+        notes: (c.notes || 0) + 1,
+        lastTouch: new Date().toISOString().slice(0, 10),
+        timeline: [...(c.timeline || []), { when: new Date().toISOString().slice(0, 10), text: v['Note'], who: 'You' }]
+      });
+      toast('Note added to the activity log');
+      render();
+    }
   }));
   view.querySelector('#remind').addEventListener('click', () => modal({
     title: 'Set a reminder', confirm: 'Set reminder',
     body: `<div class="stack">
-      <div class="field"><label>What</label><input placeholder="Follow up on the partnership ask"></div>
+      ${textField('What', { placeholder: 'Follow up on the partnership ask' })}
       <div class="form-grid form-grid--2">
-        <div class="field"><label>When</label><input type="date"></div>
-        <div class="field"><label>Channel</label><select><option>Call</option><option>Email</option><option>Text</option><option>In person</option></select></div>
+        ${textField('When', { type: 'date' })}
+        ${selectField('Channel', ['Call', 'Email', 'Text', 'In person'])}
       </div></div>`,
-    onConfirm: () => toast('Reminder set')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['What', 'When']);
+      if (v === false) return false;
+      store.create('reminders', {
+        title: v['What'], contact: c.name, contactId: c.id, owner: 'You',
+        due: v['When'], past: v['When'] < '2026-09-07', channel: v['Channel'], status: 'Open'
+      });
+      toast('Reminder set');
+      render();
+    }
   }));
-  view.querySelector('#ask').addEventListener('click', () => toast('Ask logged against ' + c.name));
-  view.querySelector('#link').addEventListener('click', () => toast('Relationship linked'));
+  view.querySelector('#ask').addEventListener('click', () => modal({
+    title: 'Log an ask', confirm: 'Log ask',
+    body: `${textField('Amount asked for', { type: 'number', placeholder: '250' })}
+      ${selectField('Frequency', ['Monthly', 'One-time'])}
+      ${selectField('Outcome', ['Awaiting reply', 'Committed', 'Declined', 'Asked to follow up'])}
+      ${textareaField('What was said', {})}`,
+    onConfirm: scrim => {
+      const v = readForm(scrim);
+      const stage = v['Outcome'] === 'Committed' ? 'Committed'
+        : v['Outcome'] === 'Declined' ? 'Cold' : 'Meeting Set';
+      store.update('contacts', c.id, {
+        stage, lastTouch: new Date().toISOString().slice(0, 10),
+        timeline: [...(c.timeline || []), { when: new Date().toISOString().slice(0, 10),
+          text: `Ask: ${v['Amount asked for'] || '—'} ${v['Frequency']} — ${v['Outcome']}. ${v['What was said'] || ''}`.trim(),
+          who: 'You' }]
+      });
+      toast('Ask logged against ' + c.name);
+      render();
+    }
+  }));
+  view.querySelector('#link').addEventListener('click', () => modal({
+    title: 'Link a relationship', confirm: 'Link',
+    body: `${textField('Related contact', { list: 'relList', placeholder: 'Search contacts' })}
+      <datalist id="relList">${D.contacts.slice(0, 120).map(x => `<option value="${esc(x.name)}">`).join('')}</datalist>
+      ${selectField('Relationship', ['Spouse', 'Parent', 'Child', 'Sibling', 'Colleague', 'Referred by', 'Same church'])}`,
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Related contact']);
+      if (v === false) return false;
+      store.update('contacts', c.id, { relationships: `${v['Relationship']} of ${v['Related contact']}` });
+      toast('Relationship linked');
+      render();
+    }
+  }));
   void num;
 }

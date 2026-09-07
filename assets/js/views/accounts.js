@@ -1,8 +1,10 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
 import { pageHead, card, DataTable, badge, esc, usd, usd0, shortDate, stat, num, modal, toast } from '../ui.js';
+import * as store from '../store.js';
 
 export default function accounts(view) {
+  const render = () => accounts(view);
   const rows = D.users.filter(u => u.type === 'Staff').map(u => {
     const gifts = D.donations.filter(d => d.designation === u.name);
     const pendingOut = D.requests.filter(r => r.requesterId === u.id && r.amount != null && ['Pending', 'In Review', 'Approved'].includes(r.status));
@@ -66,7 +68,15 @@ export default function accounts(view) {
     ]
   }).mount(view.querySelector('#accTable'));
 
-  view.querySelector('#statements').addEventListener('click', () => toast(`${rows.length} monthly statements queued`));
+  view.querySelector('#statements').addEventListener('click', () => modal({
+    title: 'Send monthly statements', confirm: 'Send statements',
+    body: `<p style="margin-top:0">${rows.length} staff accounts will receive a statement for
+        ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+      ${rows.filter(r => r.balance < 0).length
+        ? `<div class="notice notice--warn">${rows.filter(r => r.balance < 0).length} accounts are in deficit
+           and their statement will show a negative balance.</div>` : ''}`,
+    onConfirm: () => toast(`${rows.length} statements queued`)
+  }));
   view.querySelector('#disburse').addEventListener('click', () => modal({
     title: 'Run a disbursement', confirm: 'Run disbursement',
     body: `<p class="muted" style="margin-top:0">This will pay out every approved MPD and flex pay request against available balances.</p>
@@ -77,7 +87,17 @@ export default function accounts(view) {
       <div class="hr"></div>
       <div class="row row--between"><span>Requests included</span><strong>${D.requests.filter(r => r.status === 'Approved' && r.amount).length}</strong></div>
       <div class="row row--between"><span>Total to disburse</span><strong>${usd0(D.sum(D.requests.filter(r => r.status === 'Approved' && r.amount), r => r.amount))}</strong></div>`,
-    onConfirm: () => toast('Disbursement run started — you will be notified when it completes')
+    onConfirm: () => {
+      const approved = D.requests.filter(r => r.status === 'Approved' && r.amount);
+      if (!approved.length) return toast('Nothing is approved and waiting to be paid');
+      store.updateMany('requests', approved.map(r => r.id), { status: 'Paid' });
+      approved.forEach(r => {
+        const u = D.findUser(r.requesterId);
+        if (u) store.update('users', u.id, { balance: u.balance - r.amount }, { silent: true });
+      });
+      toast(`${approved.length} requests paid, ${usd0(D.sum(approved, r => r.amount))} disbursed`);
+      render();
+    }
   }));
   void dt;
 }

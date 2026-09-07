@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd0, stat, num, progress, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd0, stat, num, progress, modal, toast,
+         textField, selectField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function budgets(view) {
+  const render = () => budgets(view);
   const totals = {
     budget: D.sum(D.budgets, b => b.budget),
     spent: D.sum(D.budgets, b => b.spent),
@@ -66,13 +69,25 @@ export default function budgets(view) {
   view.querySelector('#newB').addEventListener('click', () => modal({
     title: 'New budget line', confirm: 'Create line',
     body: `<div class="form-grid form-grid--2">
-      <div class="field span-2"><label>Name</label><input placeholder="East Africa Operations"></div>
-      <div class="field"><label>Sector</label><select>${['Southern Africa','East Africa','North Africa','Middle East','South America','Global'].map(s => `<option>${s}</option>`).join('')}</select></div>
-      <div class="field"><label>Fiscal year</label><select><option>FY2026</option><option>FY2027</option></select></div>
-      <div class="field"><label>Amount (USD)</label><input type="number" placeholder="180000"></div>
-      <div class="field"><label>Owner</label><input list="ownersB" placeholder="Search staff"><datalist id="ownersB">${D.users.slice(0, 30).map(u => `<option value="${esc(u.name)}">`).join('')}</datalist></div>
+      ${textField('Name', { placeholder: 'East Africa Operations', span: 2 })}
+      ${selectField('Sector', ['Southern Africa','East Africa','North Africa','Middle East','South America','Global'])}
+      ${selectField('Fiscal year', ['FY2026', 'FY2027'])}
+      ${textField('Amount (USD)', { type: 'number', placeholder: '180000' })}
+      ${textField('Owner', { list: 'ownersB', placeholder: 'Search staff' })}
+      <datalist id="ownersB">${D.users.slice(0, 40).map(u => `<option value="${esc(u.name)}">`).join('')}</datalist>
     </div>`,
-    onConfirm: () => toast('Budget line created')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Name', 'Amount (USD)']);
+      if (v === false) return false;
+      const amount = Number(v['Amount (USD)']) || 0;
+      store.create('budgets', {
+        name: v['Name'], sector: v['Sector'], fy: v['Fiscal year'],
+        budget: amount, spent: 0, committed: 0, remaining: amount, pct: 0,
+        owner: v['Owner'] || '\u2014'
+      });
+      toast('Budget line created');
+      render();
+    }
   }));
   void num;
 }

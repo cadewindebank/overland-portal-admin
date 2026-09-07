@@ -1,8 +1,11 @@
 import * as D from '../data.js';
 import { icon } from '../icons.js';
-import { pageHead, card, DataTable, badge, esc, usd, usd0, shortDate, stat, num, barChart, modal, toast } from '../ui.js';
+import { pageHead, card, DataTable, badge, esc, usd, usd0, shortDate, stat, num, barChart, modal, toast,
+         textField, selectField, requireFields } from '../ui.js';
+import * as store from '../store.js';
 
 export default function donations(view) {
+  const render = () => donations(view);
   const ytd = D.donations.filter(d => d.date >= '2026-01-01');
   const recurring = D.donations.filter(d => d.recurring);
   const unreceipted = D.donations.filter(d => !d.receipted);
@@ -58,20 +61,58 @@ export default function donations(view) {
     ]
   }).mount(view.querySelector('#donTable'));
 
-  view.querySelector('#receiptBtn').addEventListener('click', () =>
-    toast(`${unreceipted.length} receipts queued for delivery`));
+  view.querySelector('#receiptBtn').addEventListener('click', () => {
+    if (!unreceipted.length) return toast('Every gift already has a receipt');
+    modal({
+      title: `Issue ${unreceipted.length} receipts`, confirm: 'Issue receipts',
+      body: `<p style="margin-top:0">Covering ${usd0(D.sum(unreceipted, d => d.amount))} across
+        ${new Set(unreceipted.map(d => d.donor)).size} donors.</p>
+        <div class="notice notice--warn">Receipts are legal documents. This marks each gift receipted.</div>`,
+      onConfirm: () => {
+        store.updateMany('donations', unreceipted.map(d => d.id), { receipted: true });
+        toast(`${unreceipted.length} receipts issued`);
+        render();
+      }
+    });
+  });
   view.querySelector('#recordBtn').addEventListener('click', () => modal({
     title: 'Record a gift', confirm: 'Record gift', wide: true,
     body: `<div class="form-grid">
-      <div class="field"><label>Donor</label><input list="dl" placeholder="Search donors"><datalist id="dl">${D.users.slice(0, 50).map(u => `<option value="${esc(u.name)}">`).join('')}</datalist></div>
-      <div class="field"><label>Amount (USD)</label><input type="number" step="0.01" placeholder="250.00"></div>
-      <div class="field"><label>Date received</label><input type="date"></div>
-      <div class="field"><label>Method</label><select>${['Check','ACH','Wire','Stock','DAF','MasterCard','Visa'].map(m => `<option>${m}</option>`).join('')}</select></div>
-      <div class="field"><label>Fund</label><select>${['General Fund','Staff Support','Expedition Fund','Base Development','Medical Outreach','Aviation','Water Projects'].map(f => `<option>${f}</option>`).join('')}</select></div>
-      <div class="field"><label>Designation</label><input placeholder="Staff name or project"></div>
-      <div class="field span-3"><label>Memo</label><input placeholder="Appears on the donor's receipt"></div>
+      ${textField('Donor', { list: 'dl', placeholder: 'Search donors' })}
+      <datalist id="dl">${D.contacts.slice(0, 120).map(c => `<option value="${esc(c.name)}">`).join('')}</datalist>
+      ${textField('Amount (USD)', { type: 'number', placeholder: '250.00' })}
+      ${textField('Date received', { type: 'date' })}
+      ${selectField('Method', ['Check','ACH','Wire','Stock','DAF','MasterCard','Visa'])}
+      ${selectField('Fund', ['General Fund','Staff Support','Expedition Fund','Base Development','Medical Outreach','Aviation','Water Projects'])}
+      ${textField('Designation', { placeholder: 'Staff name or project' })}
+      ${textField('Memo', { placeholder: "Appears on the donor's receipt", span: 3 })}
     </div>`,
-    onConfirm: () => toast('Gift recorded and receipt queued')
+    onConfirm: scrim => {
+      const v = requireFields(scrim, ['Donor', 'Amount (USD)', 'Date received']);
+      if (v === false) return false;
+      const amt = Number(v['Amount (USD)']);
+      if (!(amt > 0)) {
+        scrim.querySelector('.modal__body').insertAdjacentHTML('afterbegin',
+          '<div class="notice notice--stop">Enter an amount greater than zero.</div>');
+        return false;
+      }
+      const c = D.contacts.find(x => x.name === v['Donor']);
+      const u = D.users.find(x => x.name === v['Donor']);
+      const row = store.create('donations', {
+        date: v['Date received'], amount: amt, type: 'Donation',
+        fund: v['Fund'], method: v['Method'], recurring: false,
+        donor: v['Donor'], donorId: u ? u.id : (c ? c.id : null),
+        rep: v['Designation'] || '\u2014', repCode: 'A' + Math.floor(1000 + Math.random() * 4000),
+        designation: v['Designation'] || v['Fund'], receipted: true,
+        memo: v['Memo'] || '', status: 'Posted'
+      });
+      if (c) store.update('contacts', c.id, {
+        lifetime: (c.lifetime || 0) + amt, lastGift: v['Date received'], lapsed: false,
+        stage: 'Giving'
+      }, { silent: true });
+      toast('Gift recorded and receipt queued');
+      location.hash = '#/donations/' + row.id;
+    }
   }));
   void dt;
 }
